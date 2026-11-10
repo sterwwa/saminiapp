@@ -73,7 +73,7 @@ async def guard(request: web.Request, handler):
         if request.path.startswith("/api/") and request.path not in access_exempt:
             if not await _has_access(d, uid):
                 return web.json_response({"error": "access_code_required", "message": "Введите код доступа."}, status=403)
-        if request.path.startswith("/api/") and request.path not in {"/api/me", "/api/access", "/api/admin/access-code", "/api/admin/users"}:
+        if request.path.startswith("/api/") and request.path not in {"/api/me", "/api/access", "/api/register", "/api/admin/access-code", "/api/admin/users"}:
             if await _get_registered_user(d, uid) is None:
                 return web.json_response({"error": "registration_required", "message": "Сначала заполните профиль."}, status=428)
         if d.is_member is not None and not await d.is_member(uid):
