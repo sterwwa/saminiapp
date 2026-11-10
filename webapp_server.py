@@ -40,6 +40,7 @@ class Deps:
     tz_name: str
     get_lessons: Callable[..., Awaitable[list[dict]]]
     bells: Bells
+    get_snapshot: Callable[[date], list[dict] | None] | None = None
     is_member: Callable[[int], Awaitable[bool]] | None = None
     dev: bool = False
     data_dir: Path = Path("data")
@@ -99,7 +100,7 @@ async def health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
-def _day_json(d: Deps, day: date, lessons: list[dict], error: bool) -> dict:
+def _day_json(d: Deps, day: date, lessons: list[dict], error: bool, cached: bool = False) -> dict:
     times = d.bells.day_times(day)
     out = []
     for l in lessons:
@@ -110,7 +111,7 @@ def _day_json(d: Deps, day: date, lessons: list[dict], error: bool) -> dict:
             "start": f"{t[0]:%H:%M}" if t else None,
             "end": f"{t[1]:%H:%M}" if t else None,
         })
-    return {"date": day.isoformat(), "lessons": out, "error": error}
+    return {"date": day.isoformat(), "lessons": out, "error": error, "cached": cached}
 
 
 async def api_day(request: web.Request) -> web.Response:
@@ -126,10 +127,12 @@ async def api_day(request: web.Request) -> web.Response:
         result = _day_json(d, day, await d.get_lessons(day), False)
     except ScheduleError as e:
         log.warning("API %s: %s", day, e)
-        result = _day_json(d, day, [], True)
+        snapshot = d.get_snapshot(day) if d.get_snapshot else None
+        result = _day_json(d, day, snapshot, False, cached=True) if snapshot is not None else _day_json(d, day, [], True)
     except Exception:
         log.exception("Неожиданная ошибка получения расписания на %s", day)
-        result = _day_json(d, day, [], True)
+        snapshot = d.get_snapshot(day) if d.get_snapshot else None
+        result = _day_json(d, day, snapshot, False, cached=True) if snapshot is not None else _day_json(d, day, [], True)
     return web.json_response({
         "tz": d.tz_name, "group": d.group,
         "now": datetime.now(d.tz).isoformat(timespec="seconds"),
@@ -157,10 +160,12 @@ async def api_week(request: web.Request) -> web.Response:
                 return _day_json(d, day, await d.get_lessons(day), False)
             except ScheduleError as e:
                 log.warning("API %s: %s", day, e)
-                return _day_json(d, day, [], True)
+                snapshot = d.get_snapshot(day) if d.get_snapshot else None
+                return _day_json(d, day, snapshot, False, cached=True) if snapshot is not None else _day_json(d, day, [], True)
             except Exception:
                 log.exception("Неожиданная ошибка получения расписания на %s", day)
-                return _day_json(d, day, [], True)
+                snapshot = d.get_snapshot(day) if d.get_snapshot else None
+                return _day_json(d, day, snapshot, False, cached=True) if snapshot is not None else _day_json(d, day, [], True)
 
     results = await asyncio.gather(*(one(day) for day in days))
     return web.json_response({
