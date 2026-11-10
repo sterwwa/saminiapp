@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, tzinfo
@@ -34,6 +35,7 @@ class Deps:
     dev: bool = False
     data_dir: Path = Path("data")
     auth_max_age: int = 3600
+    admin_ids: set[int] = field(default_factory=lambda: {int(x) for x in os.getenv("ADMIN_IDS", "").replace(" ", "").split(",") if x.lstrip("-").isdigit()})
     prefs: dict[int, dict] = field(default_factory=dict)
     prefs_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     rate: dict[int, list[float]] = field(default_factory=dict)
@@ -153,6 +155,30 @@ async def _save_prefs(d: Deps) -> None:
     await asyncio.to_thread(tmp.replace, path)
 
 
+def require_admin(request: web.Request, d: Deps) -> bool:
+    user = request.get("user") or {}
+    try:
+        return int(user.get("id", 0)) in d.admin_ids
+    except (TypeError, ValueError):
+        return False
+
+
+async def api_admin_overview(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
+    async with d.prefs_lock:
+        await _load_prefs(d)
+        total = len(d.prefs)
+        counts = {key: sum(1 for prefs in d.prefs.values() if prefs.get(key, default)) for key, default in DEFAULT_PREFS.items()}
+    return web.json_response({"admin": True, "group": d.group, "timezone": d.tz_name,
+        "preferences": {"users_with_saved_settings": total, "enabled": counts},
+        "bells_configured": d.bells.configured,
+        "bells": {day: {str(n): [a.strftime("%H:%M"), b.strftime("%H:%M")] for n, (a, b) in slots.items()} for day, slots in d.bells.table.items()},
+        "schedule_source": "guspoliteh.ru",
+        "notice": "Расписание загружается с сайта техникума. Фоновые персональные push-уведомления пока не реализованы."})
+
+
 async def api_me(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     user = request.get("user") or {}
@@ -165,7 +191,7 @@ async def api_me(request: web.Request) -> web.Response:
                  "last_name": str(user.get("last_name", ""))[:64],
                  "username": str(user.get("username", ""))[:64],
                  "language_code": str(user.get("language_code", "ru"))[:12]},
-        "group": d.group, "timezone": d.tz_name, "preferences": prefs,
+        "group": d.group, "timezone": d.tz_name, "preferences": prefs, "is_admin": require_admin(request, d),
         "notifications_note": "Настройки сохраняются в профиле. Для фоновых push-уведомлений нужна отдельная серверная рассылка.",
     })
 
@@ -197,6 +223,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/healthz", health)
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
+    app.router.add_get("/api/admin/overview", api_admin_overview)
     app.router.add_post("/api/preferences", api_preferences)
     return app
 
