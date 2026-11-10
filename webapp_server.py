@@ -307,7 +307,7 @@ async def api_admin_access_code(request: web.Request) -> web.Response:
                     db.execute("UPDATE access_grants SET version = ?", (version,))
                 else:
                     db.execute("DELETE FROM access_grants")
-                db.execute("INSERT INTO access_grants (telegram_id, version) VALUES (?, ?)", (uid, version))
+                db.execute("INSERT INTO access_grants (telegram_id, version) VALUES (?, ?) ON CONFLICT(telegram_id) DO UPDATE SET version=excluded.version", (uid, version))
                 db.commit()
             finally:
                 db.close()
