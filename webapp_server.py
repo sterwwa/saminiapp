@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -24,6 +26,8 @@ INDEX = Path(__file__).resolve().parent / "webapp" / "index.html"
 MAX_SHIFT_DAYS = 90
 DEFAULT_PREFS = {"lesson_reminders": True, "schedule_changes": True, "daily_summary": True}
 FULL_NAME_RE = re.compile(r"^[^\W\d_]+(?:[-'][^\W\d_]+)*(?:\s+[^\W\d_]+(?:[-'][^\W\d_]+)*){1,3}$", re.UNICODE)
+ACCESS_CODE_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
+ACCESS_CODE_ROUNDS = 310_000
 
 
 @dataclass
@@ -43,6 +47,7 @@ class Deps:
     prefs_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     rate: dict[int, list[float]] = field(default_factory=dict)
     users_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    access_attempts: dict[int, list[float]] = field(default_factory=dict)
 
 
 @web.middleware
@@ -62,7 +67,11 @@ async def guard(request: web.Request, handler):
         recent.append(now_mono)
         d.rate[uid] = recent
         request["user"] = user
-        if request.path.startswith("/api/") and request.path not in {"/api/me", "/api/register", "/api/admin/users"}:
+        access_exempt = {"/api/me", "/api/access", "/api/admin/access-code"}
+        if request.path.startswith("/api/") and request.path not in access_exempt:
+            if not await _has_access(d, uid):
+                return web.json_response({"error": "access_code_required", "message": "Введите код доступа."}, status=403)
+        if request.path.startswith("/api/") and request.path not in {"/api/me", "/api/access", "/api/admin/access-code", "/api/admin/users"}:
             if await _get_registered_user(d, uid) is None:
                 return web.json_response({"error": "registration_required", "message": "Сначала заполните профиль."}, status=428)
         if d.is_member is not None and not await d.is_member(uid):
@@ -188,6 +197,9 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )""")
+    db.execute("CREATE TABLE IF NOT EXISTS access_settings (id INTEGER PRIMARY KEY CHECK (id = 1), salt TEXT NOT NULL, code_hash TEXT NOT NULL, version INTEGER NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS access_grants (telegram_id INTEGER PRIMARY KEY, version INTEGER NOT NULL)")
+    db.execute("CREATE TABLE IF NOT EXISTS access_bans (telegram_id INTEGER PRIMARY KEY, banned_at TEXT NOT NULL)")
     return db
 
 
@@ -201,6 +213,103 @@ async def _get_registered_user(d: Deps, uid: int) -> dict | None:
             finally:
                 db.close()
         return await asyncio.to_thread(read)
+
+
+async def _access_snapshot(d: Deps, uid: int) -> dict:
+    async with d.users_lock:
+        def read():
+            db = _db_connect(d)
+            try:
+                settings = db.execute("SELECT version FROM access_settings WHERE id = 1").fetchone()
+                banned = db.execute("SELECT 1 FROM access_bans WHERE telegram_id = ?", (uid,)).fetchone() is not None
+                if not settings:
+                    return {"configured": False, "authorized": False, "banned": banned}
+                grant = db.execute("SELECT version FROM access_grants WHERE telegram_id = ?", (uid,)).fetchone()
+                return {"configured": True, "authorized": bool(not banned and grant and grant["version"] == settings["version"]), "banned": banned}
+            finally:
+                db.close()
+        return await asyncio.to_thread(read)
+
+
+async def _has_access(d: Deps, uid: int) -> bool:
+    return (await _access_snapshot(d, uid))["authorized"]
+
+
+async def api_access(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        raise web.HTTPBadRequest(text="Ожидается JSON")
+    code = body.get("code") if isinstance(body, dict) and set(body) == {"code"} else None
+    if not isinstance(code, str) or not ACCESS_CODE_RE.fullmatch(code):
+        raise web.HTTPBadRequest(text="Код должен содержать 8–64 символа: латинские буквы, цифры, точку, дефис или подчёркивание")
+    attempts = [t for t in d.access_attempts.get(uid, []) if time.monotonic() - t < 900]
+    if len(attempts) >= 5:
+        return web.json_response({"error": "rate_limited", "message": "Слишком много попыток. Подождите 15 минут."}, status=429)
+    attempts.append(time.monotonic())
+    d.access_attempts[uid] = attempts
+    async with d.users_lock:
+        def verify():
+            db = _db_connect(d)
+            try:
+                if db.execute("SELECT 1 FROM access_bans WHERE telegram_id = ?", (uid,)).fetchone():
+                    return "banned"
+                row = db.execute("SELECT salt, code_hash, version FROM access_settings WHERE id = 1").fetchone()
+                if not row:
+                    return False
+                digest = hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), bytes.fromhex(row["salt"]), ACCESS_CODE_ROUNDS).hex()
+                if not hmac.compare_digest(digest, row["code_hash"]):
+                    return False
+                db.execute("INSERT INTO access_grants (telegram_id, version) VALUES (?, ?) ON CONFLICT(telegram_id) DO UPDATE SET version=excluded.version", (uid, row["version"]))
+                db.commit()
+                return True
+            finally:
+                db.close()
+        ok = await asyncio.to_thread(verify)
+    if ok == "banned":
+        return web.json_response({"error": "access_revoked", "message": "Ваш доступ закрыт администратором."}, status=403)
+    if not ok:
+        return web.json_response({"error": "invalid_code", "message": "Код доступа неверный."}, status=401)
+    d.access_attempts.pop(uid, None)
+    return web.json_response({"granted": True})
+
+
+async def api_admin_access_code(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        raise web.HTTPBadRequest(text="Ожидается JSON")
+    code = body.get("code") if isinstance(body, dict) and set(body) == {"code", "preserve_existing_access"} else None
+    preserve = body.get("preserve_existing_access") if isinstance(body, dict) else None
+    if not isinstance(code, str) or not ACCESS_CODE_RE.fullmatch(code):
+        raise web.HTTPBadRequest(text="Код должен содержать 8–64 символа: латинские буквы, цифры, точку, дефис или подчёркивание")
+    if type(preserve) is not bool:
+        raise web.HTTPBadRequest(text="Укажите, сохранять ли доступ уже вошедшим пользователям")
+    salt = os.urandom(16)
+    digest = hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), salt, ACCESS_CODE_ROUNDS).hex()
+    uid = int((request.get("user") or {}).get("id", 0))
+    async with d.users_lock:
+        def save():
+            db = _db_connect(d)
+            try:
+                row = db.execute("SELECT version FROM access_settings WHERE id = 1").fetchone()
+                version = (row["version"] if row else 0) + 1
+                db.execute("INSERT INTO access_settings (id, salt, code_hash, version) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET salt=excluded.salt, code_hash=excluded.code_hash, version=excluded.version", (salt.hex(), digest, version))
+                if preserve:
+                    db.execute("UPDATE access_grants SET version = ?", (version,))
+                else:
+                    db.execute("DELETE FROM access_grants")
+                db.execute("INSERT INTO access_grants (telegram_id, version) VALUES (?, ?)", (uid, version))
+                db.commit()
+            finally:
+                db.close()
+        await asyncio.to_thread(save)
+    return web.json_response({"saved": True, "preserved_existing_access": preserve})
 
 
 async def api_admin_overview(request: web.Request) -> web.Response:
@@ -227,9 +336,11 @@ async def api_admin_users(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                rows = db.execute("""SELECT telegram_id, full_name, first_name, last_name,
-                    username, language_code, created_at, updated_at
-                    FROM registered_users ORDER BY created_at DESC""").fetchall()
+                rows = db.execute("""SELECT u.telegram_id, u.full_name, u.first_name, u.last_name,
+                    u.username, u.language_code, u.created_at, u.updated_at,
+                    CASE WHEN b.telegram_id IS NULL THEN 0 ELSE 1 END AS banned
+                    FROM registered_users u LEFT JOIN access_bans b ON b.telegram_id = u.telegram_id
+                    ORDER BY u.created_at DESC""").fetchall()
                 return [dict(row) for row in rows]
             finally:
                 db.close()
@@ -237,11 +348,91 @@ async def api_admin_users(request: web.Request) -> web.Response:
     return web.json_response({"users": users, "total": len(users)})
 
 
+async def api_admin_update_user(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
+    try:
+        uid = int(request.match_info["user_id"])
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        raise web.HTTPBadRequest(text="Некорректный запрос")
+    full_name = body.get("full_name") if isinstance(body, dict) and set(body) == {"full_name"} else None
+    if not isinstance(full_name, str):
+        raise web.HTTPBadRequest(text="Укажите ФИО")
+    full_name = " ".join(full_name.split())
+    if len(full_name) > 120 or not FULL_NAME_RE.fullmatch(full_name):
+        raise web.HTTPBadRequest(text="Введите ФИО: от двух до четырёх слов, только буквы и дефисы")
+    async with d.users_lock:
+        def update():
+            db = _db_connect(d)
+            try:
+                cur = db.execute("UPDATE registered_users SET full_name = ?, updated_at = ? WHERE telegram_id = ?", (full_name, datetime.now(timezone.utc).isoformat(timespec="seconds"), uid))
+                db.commit()
+                return cur.rowcount > 0
+            finally:
+                db.close()
+        exists = await asyncio.to_thread(update)
+    if not exists:
+        raise web.HTTPNotFound(text="Профиль не найден")
+    return web.json_response({"saved": True, "telegram_id": uid, "full_name": full_name})
+
+
+async def api_admin_kick_user(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
+    try:
+        uid = int(request.match_info["user_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(text="Некорректный Telegram ID")
+    if uid in d.admin_ids:
+        raise web.HTTPBadRequest(text="Нельзя закрыть доступ администратору")
+    async with d.users_lock:
+        def kick():
+            db = _db_connect(d)
+            try:
+                if not db.execute("SELECT 1 FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone():
+                    return False
+                db.execute("INSERT INTO access_bans (telegram_id, banned_at) VALUES (?, ?) ON CONFLICT(telegram_id) DO UPDATE SET banned_at=excluded.banned_at", (uid, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+                db.execute("DELETE FROM access_grants WHERE telegram_id = ?", (uid,))
+                db.commit()
+                return True
+            finally:
+                db.close()
+        exists = await asyncio.to_thread(kick)
+    if not exists:
+        raise web.HTTPNotFound(text="Профиль не найден")
+    return web.json_response({"saved": True, "banned": True})
+
+
+async def api_admin_restore_user(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
+    try:
+        uid = int(request.match_info["user_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(text="Некорректный Telegram ID")
+    async with d.users_lock:
+        def restore():
+            db = _db_connect(d)
+            try:
+                cur = db.execute("DELETE FROM access_bans WHERE telegram_id = ?", (uid,))
+                db.commit()
+                return cur.rowcount > 0
+            finally:
+                db.close()
+        restored = await asyncio.to_thread(restore)
+    return web.json_response({"saved": True, "restored": restored, "must_reenter_code": True})
+
+
 async def api_me(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     user = request.get("user") or {}
     uid = int(user.get("id", 1))
     registered = await _get_registered_user(d, uid)
+    access = await _access_snapshot(d, uid)
     async with d.prefs_lock:
         await _load_prefs(d)
         prefs = {**DEFAULT_PREFS, **d.prefs.get(uid, {})}
@@ -252,6 +443,7 @@ async def api_me(request: web.Request) -> web.Response:
                  "language_code": str(user.get("language_code", "ru"))[:12]},
         "group": d.group, "timezone": d.tz_name, "preferences": prefs, "is_admin": require_admin(request, d),
         "registration": {"registered": registered is not None, "full_name": registered["full_name"] if registered else ""},
+        "access": access,
         "notifications_note": "Настройки сохраняются в профиле. Для фоновых push-уведомлений нужна отдельная серверная рассылка.",
     })
 
@@ -321,8 +513,13 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/healthz", health)
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
+    app.router.add_post("/api/access", api_access)
+    app.router.add_post("/api/admin/access-code", api_admin_access_code)
     app.router.add_get("/api/admin/overview", api_admin_overview)
     app.router.add_get("/api/admin/users", api_admin_users)
+    app.router.add_put("/api/admin/users/{user_id:\\d+}", api_admin_update_user)
+    app.router.add_post("/api/admin/users/{user_id:\\d+}/kick", api_admin_kick_user)
+    app.router.add_post("/api/admin/users/{user_id:\\d+}/restore", api_admin_restore_user)
     app.router.add_post("/api/register", api_register)
     app.router.add_post("/api/preferences", api_preferences)
     return app
