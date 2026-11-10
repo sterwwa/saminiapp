@@ -38,20 +38,23 @@ class ScheduleClient:
             headers=HEADERS, timeout=timeout, follow_redirects=True
         )
         self._group_id: str | None = None
+        self._group_id_lock = asyncio.Lock()
+        self._group_id_retry_after = 0.0
 
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def _with_retries(self, what: str, func):
+    async def _with_retries(self, what: str, func, retries: int | None = None):
         delay = 2.0
         last: Exception | None = None
-        for attempt in range(1, self.retries + 1):
+        attempts = retries if retries is not None else self.retries
+        for attempt in range(1, attempts + 1):
             try:
                 return await func()
             except (httpx.HTTPError, ParseError, ScheduleError) as e:
                 last = e
-                log.warning("%s: попытка %d/%d не удалась: %s", what, attempt, self.retries, e)
-                if attempt < self.retries:
+                log.warning("%s: попытка %d/%d не удалась: %s", what, attempt, attempts, e)
+                if attempt < attempts:
                     await asyncio.sleep(delay)
                     delay *= 2
         raise ScheduleError(f"{what}: {last}") from last
@@ -66,13 +69,29 @@ class ScheduleClient:
                     return opt["value"]
             raise ScheduleError(f"Группа {self.group_name} не найдена на странице")
 
-        return await self._with_retries("Поиск id группы", go)
+        return await self._with_retries("Поиск id группы", go, retries=2)
+
+    async def _ensure_group_id(self) -> str:
+        if self._group_id is not None:
+            return self._group_id
+        async with self._group_id_lock:
+            if self._group_id is not None:
+                return self._group_id
+            now = asyncio.get_running_loop().time()
+            if now < self._group_id_retry_after:
+                raise ScheduleError("Источник расписания временно не отвечает")
+            try:
+                self._group_id = await self._load_group_id()
+                self._group_id_retry_after = 0.0
+                log.info("Группа %s: id=%s", self.group_name, self._group_id)
+                return self._group_id
+            except ScheduleError:
+                self._group_id_retry_after = asyncio.get_running_loop().time() + 15.0
+                raise
 
     async def get_day(self, day: date) -> DaySchedule:
         """Расписание группы на дату. Пустой lessons = занятий нет."""
-        if self._group_id is None:
-            self._group_id = await self._load_group_id()
-            log.info("Группа %s: id=%s", self.group_name, self._group_id)
+        await self._ensure_group_id()
 
         async def go() -> DaySchedule:
             result = parse_schedule(await self._post(day))
@@ -87,8 +106,7 @@ class ScheduleClient:
             raise
 
     async def _post(self, day: date) -> str:
-        if self._group_id is None:
-            self._group_id = await self._load_group_id()
+        await self._ensure_group_id()
         r = await self._client.post(
             PAGE_URL,
             data={"id": self._group_id, "date": day.isoformat(), "modal2": "true"},
