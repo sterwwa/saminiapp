@@ -113,6 +113,30 @@ def _day_json(d: Deps, day: date, lessons: list[dict], error: bool) -> dict:
     return {"date": day.isoformat(), "lessons": out, "error": error}
 
 
+async def api_day(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    today = datetime.now(d.tz).date()
+    try:
+        day = date.fromisoformat(request.query.get("date", today.isoformat()))
+    except ValueError:
+        raise web.HTTPBadRequest(text="Некорректная дата")
+    if abs((day - today).days) > MAX_SHIFT_DAYS:
+        raise web.HTTPBadRequest(text="Дата вне допустимого диапазона")
+    try:
+        result = _day_json(d, day, await d.get_lessons(day), False)
+    except ScheduleError as e:
+        log.warning("API %s: %s", day, e)
+        result = _day_json(d, day, [], True)
+    except Exception:
+        log.exception("Неожиданная ошибка получения расписания на %s", day)
+        result = _day_json(d, day, [], True)
+    return web.json_response({
+        "tz": d.tz_name, "group": d.group,
+        "now": datetime.now(d.tz).isoformat(timespec="seconds"),
+        "day": result,
+    })
+
+
 async def api_week(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     today = datetime.now(d.tz).date()
@@ -125,15 +149,18 @@ async def api_week(request: web.Request) -> web.Response:
     monday = anchor - timedelta(days=anchor.weekday())
     days = [monday + timedelta(days=i) for i in range(7)]
 
+    semaphore = asyncio.Semaphore(2)
+
     async def one(day: date) -> dict:
-        try:
-            return _day_json(d, day, await d.get_lessons(day), False)
-        except ScheduleError as e:
-            log.warning("API %s: %s", day, e)
-            return _day_json(d, day, [], True)
-        except Exception:
-            log.exception("Неожиданная ошибка получения расписания на %s", day)
-            return _day_json(d, day, [], True)
+        async with semaphore:
+            try:
+                return _day_json(d, day, await d.get_lessons(day), False)
+            except ScheduleError as e:
+                log.warning("API %s: %s", day, e)
+                return _day_json(d, day, [], True)
+            except Exception:
+                log.exception("Неожиданная ошибка получения расписания на %s", day)
+                return _day_json(d, day, [], True)
 
     results = await asyncio.gather(*(one(day) for day in days))
     return web.json_response({
@@ -514,6 +541,7 @@ def create_app(deps: Deps) -> web.Application:
     app["deps"] = deps
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
+    app.router.add_get("/api/day", api_day)
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
     app.router.add_post("/api/access", api_access)
