@@ -103,7 +103,7 @@ async def _publish_schedule(day: date, lessons: list[dict]) -> None:
     if not SCHEDULE_SYNC_URL or not SCHEDULE_SYNC_SECRET:
         return
     try:
-        async with httpx.AsyncClient(timeout=8) as sync_client:
+        async with httpx.AsyncClient(timeout=3) as sync_client:
             response = await sync_client.post(
                 SCHEDULE_SYNC_URL,
                 headers={"X-Schedule-Sync-Token": SCHEDULE_SYNC_SECRET},
