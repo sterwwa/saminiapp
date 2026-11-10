@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import httpx
 import logging
 import os
 import sys
@@ -61,6 +62,8 @@ WEBAPP_HOST = os.getenv("WEBAPP_HOST", "0.0.0.0")
 WEBAPP_DEV = os.getenv("WEBAPP_DEV", "0").strip() in ("1", "true", "yes")  # без проверки подписи, только для отладки
 WEBAPP_MEMBERS_ONLY = os.getenv("WEBAPP_MEMBERS_ONLY", "0").strip() in ("1", "true", "yes")
 WEBAPP_AUTH_MAX_AGE = env_int("WEBAPP_AUTH_MAX_AGE", 3600)
+SCHEDULE_SYNC_URL = os.getenv("SCHEDULE_SYNC_URL", "").strip()
+SCHEDULE_SYNC_SECRET = os.getenv("SCHEDULE_SYNC_SECRET", "").strip()
 
 TZ = ZoneInfo(TIMEZONE)
 ERR_TEXT = "⚠️ Не удалось получить расписание с сайта guspoliteh.ru. Попробуйте позже."
@@ -92,7 +95,37 @@ async def get_lessons(day: date, fresh: bool = False) -> list[dict]:
     state.note_ok(now())
     lessons = [l.to_dict() for l in sched.lessons]
     _cache[day] = (time.monotonic(), lessons)
+    await _publish_schedule(day, lessons)
     return lessons
+
+
+async def _publish_schedule(day: date, lessons: list[dict]) -> None:
+    if not SCHEDULE_SYNC_URL or not SCHEDULE_SYNC_SECRET:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=8) as sync_client:
+            response = await sync_client.post(
+                SCHEDULE_SYNC_URL,
+                headers={"X-Schedule-Sync-Token": SCHEDULE_SYNC_SECRET},
+                json={"group": GROUP_NAME, "date": day.isoformat(), "lessons": lessons},
+            )
+            response.raise_for_status()
+    except httpx.HTTPError as e:
+        log.warning("Не удалось передать расписание в Mini App (%s)", type(e).__name__)
+
+
+async def _publish_saved_snapshots() -> None:
+    if not SCHEDULE_SYNC_URL or not SCHEDULE_SYNC_SECRET:
+        return
+    today = now().date()
+    for day_text, lessons in state.data.get("snapshots", {}).items():
+        try:
+            day = date.fromisoformat(day_text)
+        except (TypeError, ValueError):
+            continue
+        if (day - today).days < 0 or (day - today).days > 90:
+            continue
+        await _publish_schedule(day, lessons)
 
 
 def keyboard() -> InlineKeyboardMarkup:
@@ -493,7 +526,7 @@ async def main() -> None:
     if WEBAPP_URL or WEBAPP_DEV:
         runner = await start_server(create_app(Deps(
             token=BOT_TOKEN, group=GROUP_NAME, tz=TZ, tz_name=TIMEZONE, get_lessons=get_lessons, bells=bells,
-            get_snapshot=state.get_snapshot,
+            get_snapshot=state.get_snapshot, set_snapshot=state.set_snapshot,
             is_member=is_chat_member if WEBAPP_MEMBERS_ONLY else None, dev=WEBAPP_DEV,
             data_dir=DATA_DIR, auth_max_age=WEBAPP_AUTH_MAX_AGE)), WEBAPP_HOST, WEBAPP_PORT)
         if WEBAPP_URL:
@@ -502,6 +535,7 @@ async def main() -> None:
             except TelegramAPIError as e:
                 log.warning("Не удалось поставить кнопку меню: %s", e)
     asyncio.create_task(catch_up())
+    asyncio.create_task(_publish_saved_snapshots())
     log.info("Бот запущен: группа %s, чат %s, отправка в %02d:00 %s", GROUP_NAME, CHAT_ID, SEND_HOUR, TIMEZONE)
     try:
         await dp.start_polling(bot)

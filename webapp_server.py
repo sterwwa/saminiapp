@@ -41,6 +41,8 @@ class Deps:
     get_lessons: Callable[..., Awaitable[list[dict]]]
     bells: Bells
     get_snapshot: Callable[[date], list[dict] | None] | None = None
+    set_snapshot: Callable[[date, list[dict]], None] | None = None
+    sync_secret: str = field(default_factory=lambda: os.getenv("SCHEDULE_SYNC_SECRET", ""))
     is_member: Callable[[int], Awaitable[bool]] | None = None
     dev: bool = False
     data_dir: Path = Path("data")
@@ -57,7 +59,9 @@ class Deps:
 async def guard(request: web.Request, handler):
     d: Deps = request.app["deps"]
     request["user"] = None
-    if request.path.startswith("/api/") and not d.dev:
+    if request.path == "/api/schedule-sync":
+        pass  # Отдельная авторизация по SCHEDULE_SYNC_SECRET в обработчике.
+    elif request.path.startswith("/api/") and not d.dev:
         user = validate_init_data(request.headers.get("X-Init-Data", ""), d.token, d.auth_max_age)
         if user is None:
             return web.json_response({"error": "unauthorized", "message": "Откройте приложение через Telegram"}, status=401)
@@ -112,6 +116,49 @@ def _day_json(d: Deps, day: date, lessons: list[dict], error: bool, cached: bool
             "end": f"{t[1]:%H:%M}" if t else None,
         })
     return {"date": day.isoformat(), "lessons": out, "error": error, "cached": cached}
+
+
+async def api_schedule_sync(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not d.sync_secret or d.set_snapshot is None:
+        return web.json_response({"error": "sync_not_configured"}, status=503)
+    supplied = request.headers.get("X-Schedule-Sync-Token", "")
+    if not hmac.compare_digest(supplied, d.sync_secret):
+        return web.json_response({"error": "unauthorized"}, status=401)
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, web.HTTPBadRequest):
+        return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict) or body.get("group") != d.group:
+        return web.json_response({"error": "invalid_group"}, status=400)
+    try:
+        day = date.fromisoformat(body.get("date", ""))
+    except (TypeError, ValueError):
+        return web.json_response({"error": "invalid_date"}, status=400)
+    today = datetime.now(d.tz).date()
+    if abs((day - today).days) > MAX_SHIFT_DAYS:
+        return web.json_response({"error": "date_out_of_range"}, status=400)
+    raw_lessons = body.get("lessons")
+    if not isinstance(raw_lessons, list) or len(raw_lessons) > 20:
+        return web.json_response({"error": "invalid_lessons"}, status=400)
+    lessons = []
+    for item in raw_lessons:
+        if not isinstance(item, dict):
+            return web.json_response({"error": "invalid_lesson"}, status=400)
+        number, subject = item.get("number"), item.get("subject")
+        room, teacher = item.get("room", ""), item.get("teacher", "")
+        if (type(number) is not int or not 1 <= number <= 20
+                or not isinstance(subject, str) or not 1 <= len(subject.strip()) <= 200
+                or not isinstance(room, str) or len(room) > 80
+                or not isinstance(teacher, str) or len(teacher) > 160):
+            return web.json_response({"error": "invalid_lesson"}, status=400)
+        lessons.append({
+            "number": number, "subject": subject.strip(),
+            "room": room.strip(), "teacher": teacher.strip(),
+        })
+    d.set_snapshot(day, lessons)
+    log.info("Принят снимок расписания %s: %d пар", day, len(lessons))
+    return web.json_response({"ok": True, "date": day.isoformat(), "lessons": len(lessons)})
 
 
 async def api_day(request: web.Request) -> web.Response:
@@ -546,6 +593,7 @@ def create_app(deps: Deps) -> web.Application:
     app["deps"] = deps
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
+    app.router.add_post("/api/schedule-sync", api_schedule_sync)
     app.router.add_get("/api/day", api_day)
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
