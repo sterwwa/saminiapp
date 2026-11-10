@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import re
+import secrets
 import sqlite3
 import time
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ MAX_SHIFT_DAYS = 90
 DEFAULT_PREFS = {"lesson_reminders": True, "schedule_changes": True, "daily_summary": True}
 FULL_NAME_RE = re.compile(r"^[^\W\d_]+(?:[-'][^\W\d_]+)*(?:\s+[^\W\d_]+(?:[-'][^\W\d_]+)*){1,3}$", re.UNICODE)
 ACCESS_CODE_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
+ACCESS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
 ACCESS_CODE_ROUNDS = 310_000
 
 
@@ -284,12 +286,13 @@ async def api_admin_access_code(request: web.Request) -> web.Response:
         body = await request.json()
     except (json.JSONDecodeError, ValueError):
         raise web.HTTPBadRequest(text="Ожидается JSON")
-    code = body.get("code") if isinstance(body, dict) and set(body) == {"code", "preserve_existing_access"} else None
+    generate = body.get("generate") if isinstance(body, dict) and set(body) == {"generate", "preserve_existing_access"} else None
     preserve = body.get("preserve_existing_access") if isinstance(body, dict) else None
-    if not isinstance(code, str) or not ACCESS_CODE_RE.fullmatch(code):
-        raise web.HTTPBadRequest(text="Код должен содержать 8–64 символа: латинские буквы, цифры, точку, дефис или подчёркивание")
+    if generate is not True:
+        raise web.HTTPBadRequest(text="Код доступа должен быть сгенерирован сервером")
     if type(preserve) is not bool:
         raise web.HTTPBadRequest(text="Укажите, сохранять ли доступ уже вошедшим пользователям")
+    code = "-".join("".join(secrets.choice(ACCESS_CODE_ALPHABET) for _ in range(4)) for _ in range(5))
     salt = os.urandom(16)
     digest = hashlib.pbkdf2_hmac("sha256", code.encode("utf-8"), salt, ACCESS_CODE_ROUNDS).hex()
     uid = int((request.get("user") or {}).get("id", 0))
@@ -309,7 +312,7 @@ async def api_admin_access_code(request: web.Request) -> web.Response:
             finally:
                 db.close()
         await asyncio.to_thread(save)
-    return web.json_response({"saved": True, "preserved_existing_access": preserve})
+    return web.json_response({"saved": True, "code": code, "preserved_existing_access": preserve})
 
 
 async def api_admin_overview(request: web.Request) -> web.Response:
