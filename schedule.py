@@ -31,7 +31,7 @@ class ScheduleError(Exception):
 
 
 class ScheduleClient:
-    def __init__(self, group_name: str, retries: int = 4, timeout: float = 20.0):
+    def __init__(self, group_name: str, retries: int = 2, timeout: float = 5.0):
         self.group_name = group_name
         self.retries = retries
         self._client = httpx.AsyncClient(
@@ -100,7 +100,7 @@ class ScheduleClient:
             return result
 
         try:
-            return await self._with_retries(f"Расписание на {day}", go)
+            return await self._with_retries(f"Расписание на {day}", go, retries=2)
         except ScheduleError:
             self._group_id = None  # id мог измениться — перечитаем при следующем вызове
             raise
