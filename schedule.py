@@ -61,7 +61,7 @@ class ScheduleClient:
 
     async def _load_group_id(self) -> str:
         async def go() -> str:
-            r = await self._client.get(PAGE_URL)
+            r = await self._client.get(PAGE_URL, timeout=4.0)
             r.raise_for_status()
             soup = BeautifulSoup(r.text, "html.parser")
             for opt in soup.select("#sel_group option"):
