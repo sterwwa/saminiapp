@@ -1,7 +1,7 @@
 """Получение расписания с guspoliteh.ru прямыми HTTP-запросами (без браузера).
 
 Протокол сайта (из cal.js):
-  POST https://www.guspoliteh.ru/studentu/raspisanie-zanyatiy/
+  POST https://guspoliteh.ru/studentu/raspisanie-zanyatiy/
   form-data: id=<id группы>, date=YYYY-MM-DD, modal2=true
   ответ: HTML-фрагмент (см. parser.py)
 Id группы берём со страницы (<select id="sel_group">) по названию.
@@ -19,7 +19,7 @@ from lesson_parser import DaySchedule, ParseError, parse_schedule
 
 log = logging.getLogger("schedule")
 
-PAGE_URL = "https://www.guspoliteh.ru/studentu/raspisanie-zanyatiy/"
+PAGE_URL = "https://guspoliteh.ru/studentu/raspisanie-zanyatiy/"
 HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; SA2-25-schedule-bot/1.0)",
     "Accept-Language": "ru-RU,ru;q=0.9",
