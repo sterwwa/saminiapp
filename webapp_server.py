@@ -496,6 +496,41 @@ async def api_admin_kick_user(request: web.Request) -> web.Response:
     return web.json_response({"saved": True, "banned": True})
 
 
+async def api_admin_delete_user(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
+    try:
+        uid = int(request.match_info["user_id"])
+    except ValueError:
+        raise web.HTTPBadRequest(text="Некорректный Telegram ID")
+    if uid in d.admin_ids:
+        raise web.HTTPBadRequest(text="Нельзя удалить аккаунт администратора")
+    async with d.users_lock:
+        def delete_user():
+            db = _db_connect(d)
+            try:
+                if not db.execute("SELECT 1 FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone():
+                    return False
+                db.execute("DELETE FROM registered_users WHERE telegram_id = ?", (uid,))
+                db.execute("DELETE FROM access_grants WHERE telegram_id = ?", (uid,))
+                db.execute("DELETE FROM access_bans WHERE telegram_id = ?", (uid,))
+                db.commit()
+                return True
+            finally:
+                db.close()
+        deleted = await asyncio.to_thread(delete_user)
+    if not deleted:
+        raise web.HTTPNotFound(text="Пользователь не найден")
+    async with d.prefs_lock:
+        await _load_prefs(d)
+        d.prefs.pop(uid, None)
+        await _save_prefs(d)
+    d.access_attempts.pop(uid, None)
+    d.rate.pop(uid, None)
+    return web.json_response({"deleted": True, "telegram_id": uid})
+
+
 async def api_admin_restore_user(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     if not require_admin(request, d):
@@ -643,6 +678,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_put("/api/admin/users/{user_id:\\d+}", api_admin_update_user)
     app.router.add_put("/api/admin/users/{user_id:\\d+}/role", api_admin_update_role)
     app.router.add_post("/api/admin/users/{user_id:\\d+}/kick", api_admin_kick_user)
+    app.router.add_delete("/api/admin/users/{user_id:\\d+}", api_admin_delete_user)
     app.router.add_post("/api/admin/users/{user_id:\\d+}/restore", api_admin_restore_user)
     app.router.add_post("/api/register", api_register)
     app.router.add_post("/api/profile", api_profile)
