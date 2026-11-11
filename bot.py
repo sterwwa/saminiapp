@@ -221,6 +221,29 @@ async def cmd_start(m: Message) -> None:
     await m.answer(HELP, reply_markup=keyboard(private_chat=m.chat.type == "private"))
 
 
+@dp.message(Command("c"))
+async def cmd_clear(m: Message) -> None:
+    """Очищает доступную историю личного чата и заново показывает приветствие."""
+    if m.chat.type != "private":
+        await m.answer("Команда /c доступна только в личном чате с ботом.")
+        return
+
+    # Telegram Bot API не предоставляет боту чтение истории чата.
+    # Удаляем сохранённое приветствие; входящее /c удалит middleware,
+    # остальные сообщения уже удаляются существующей очисткой личного чата.
+    first_messages = state.data.setdefault("private_first_messages", {})
+    chat_key = str(m.chat.id)
+    old_message_id = first_messages.pop(chat_key, None)
+    state.save()
+    if old_message_id:
+        try:
+            await bot.delete_message(m.chat.id, old_message_id)
+        except TelegramAPIError as e:
+            log.info("Не удалось удалить старое приветствие в чате %s: %s", m.chat.id, e)
+
+    await m.answer(HELP, reply_markup=keyboard(private_chat=True))
+
+
 async def send_view(chat_id: int, what: str) -> None:
     """what: today | tomorrow | week — общий код для команд и кнопок."""
     today = now().date()
@@ -537,6 +560,7 @@ async def main() -> None:
         BotCommand(command="schedule", description="Ближайший учебный день"),
         BotCommand(command="next", description="Ближайшая пара и время до неё"),
         BotCommand(command="app", description="Открыть мини-приложение"),
+        BotCommand(command="c", description="Очистить чат и показать приветствие"),
         BotCommand(command="status", description="Статус бота (админ)"),
     ])
 
