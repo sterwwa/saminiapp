@@ -244,6 +244,14 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
     db.execute("CREATE TABLE IF NOT EXISTS access_settings (id INTEGER PRIMARY KEY CHECK (id = 1), salt TEXT NOT NULL, code_hash TEXT NOT NULL, version INTEGER NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS access_grants (telegram_id INTEGER PRIMARY KEY, version INTEGER NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS access_bans (telegram_id INTEGER PRIMARY KEY, banned_at TEXT NOT NULL)")
+    db.execute("""CREATE TABLE IF NOT EXISTS journal_absences (
+        lesson_date TEXT NOT NULL,
+        lesson_number TEXT NOT NULL,
+        student_id INTEGER NOT NULL,
+        marked_by INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (lesson_date, lesson_number, student_id)
+    )""")
     return db
 
 
@@ -678,6 +686,136 @@ async def api_profile(request: web.Request) -> web.Response:
     return web.json_response({"bio": bio, "saved": True})
 
 
+def _journal_roles(d: Deps, uid: int) -> list[str]:
+    if uid in d.admin_ids:
+        return ["support"]
+    db = _db_connect(d)
+    try:
+        row = db.execute("SELECT role, roles_json FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone()
+        registered = dict(row) if row else None
+    finally:
+        db.close()
+    if not registered:
+        return []
+    try:
+        roles = json.loads(registered.get("roles_json") or "[]")
+    except (TypeError, json.JSONDecodeError):
+        roles = []
+    if not isinstance(roles, list):
+        roles = []
+    return [r for r in roles if r in {"student", "deputy", "starosta", "moderator"}] or [registered.get("role") or "student"]
+
+
+def _journal_can_edit(d: Deps, uid: int) -> bool:
+    return uid in d.admin_ids or bool(set(_journal_roles(d, uid)) & {"starosta", "deputy"})
+
+
+async def api_journal_get(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    today = datetime.now(d.tz).date()
+    try:
+        day = date.fromisoformat(request.query.get("date", today.isoformat()))
+    except ValueError:
+        raise web.HTTPBadRequest(text="Некорректная дата")
+    if abs((day - today).days) > MAX_SHIFT_DAYS:
+        raise web.HTTPBadRequest(text="Дата вне допустимого диапазона")
+    try:
+        day_json = _day_json(d, day, await d.get_lessons(day), False)
+    except ScheduleError as e:
+        log.warning("Журнал %s: %s", day, e)
+        day_json = _day_json(d, day, [], True)
+    except Exception:
+        log.exception("Не удалось получить расписание для журнала на %s", day)
+        day_json = _day_json(d, day, [], True)
+    async with d.users_lock:
+        def read():
+            db = _db_connect(d)
+            try:
+                students = [dict(row) for row in db.execute(
+                    "SELECT telegram_id, full_name FROM registered_users ORDER BY full_name COLLATE NOCASE"
+                ).fetchall()]
+                rows = db.execute(
+                    "SELECT lesson_number, student_id FROM journal_absences WHERE lesson_date = ?",
+                    (day.isoformat(),)
+                ).fetchall()
+                absences: dict[str, list[int]] = {}
+                for row in rows:
+                    absences.setdefault(str(row["lesson_number"]), []).append(int(row["student_id"]))
+                return students, absences
+            finally:
+                db.close()
+        students, absences = await asyncio.to_thread(read)
+    return web.json_response({
+        "date": day.isoformat(), "lessons": day_json["lessons"],
+        "schedule_error": day_json["error"], "students": students,
+        "absences": absences, "can_edit": _journal_can_edit(d, uid),
+    })
+
+
+async def api_journal_save(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    if not _journal_can_edit(d, uid):
+        return web.json_response({"error": "forbidden", "message": "Отмечать посещаемость могут только староста и зам. старосты."}, status=403)
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        raise web.HTTPBadRequest(text="Ожидается JSON")
+    if not isinstance(body, dict) or set(body) != {"date", "lesson_number", "absent_ids"}:
+        raise web.HTTPBadRequest(text="Передайте дату, номер пары и список отсутствующих")
+    try:
+        day = date.fromisoformat(body["date"])
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="Некорректная дата")
+    today = datetime.now(d.tz).date()
+    if abs((day - today).days) > MAX_SHIFT_DAYS:
+        raise web.HTTPBadRequest(text="Дата вне допустимого диапазона")
+    lesson_number = str(body["lesson_number"]).strip()
+    if not lesson_number or len(lesson_number) > 12:
+        raise web.HTTPBadRequest(text="Некорректный номер пары")
+    absent_ids = body["absent_ids"]
+    if not isinstance(absent_ids, list) or len(absent_ids) > 200:
+        raise web.HTTPBadRequest(text="Некорректный список отсутствующих")
+    if any(type(value) is not int or value <= 0 for value in absent_ids) or len(absent_ids) != len(set(absent_ids)):
+        raise web.HTTPBadRequest(text="Некорректный список студентов")
+    try:
+        lessons = _day_json(d, day, await d.get_lessons(day), False)["lessons"]
+    except Exception:
+        raise web.HTTPBadRequest(text="Не удалось проверить расписание на выбранную дату")
+    if not any(str(lesson.get("number")) == lesson_number for lesson in lessons):
+        raise web.HTTPBadRequest(text="Такой пары нет в расписании на выбранную дату")
+    async with d.users_lock:
+        def save():
+            db = _db_connect(d)
+            try:
+                if absent_ids:
+                    placeholders = ",".join("?" for _ in absent_ids)
+                    known = {int(row["telegram_id"]) for row in db.execute(
+                        f"SELECT telegram_id FROM registered_users WHERE telegram_id IN ({placeholders})",
+                        tuple(absent_ids)
+                    ).fetchall()}
+                    if known != set(absent_ids):
+                        raise ValueError("В списке есть неизвестные студенты")
+                db.execute(
+                    "DELETE FROM journal_absences WHERE lesson_date = ? AND lesson_number = ?",
+                    (day.isoformat(), lesson_number)
+                )
+                now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                db.executemany(
+                    "INSERT INTO journal_absences (lesson_date, lesson_number, student_id, marked_by, updated_at) VALUES (?, ?, ?, ?, ?)",
+                    [(day.isoformat(), lesson_number, student_id, uid, now) for student_id in absent_ids]
+                )
+                db.commit()
+            finally:
+                db.close()
+        try:
+            await asyncio.to_thread(save)
+        except ValueError as e:
+            raise web.HTTPBadRequest(text=str(e))
+    return web.json_response({"saved": True, "date": day.isoformat(), "lesson_number": lesson_number, "absent_count": len(absent_ids)})
+
+
 async def api_preferences(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     user = request.get("user") or {}
@@ -707,6 +845,8 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
     app.router.add_get("/api/students", api_students)
+    app.router.add_get("/api/journal", api_journal_get)
+    app.router.add_post("/api/journal", api_journal_save)
     app.router.add_post("/api/access", api_access)
     app.router.add_post("/api/admin/access-code", api_admin_access_code)
     app.router.add_get("/api/admin/overview", api_admin_overview)
