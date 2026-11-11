@@ -226,6 +226,9 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
     )""")
+    columns = {row["name"] for row in db.execute("PRAGMA table_info(registered_users)").fetchall()}
+    if "bio" not in columns:
+        db.execute("ALTER TABLE registered_users ADD COLUMN bio TEXT NOT NULL DEFAULT ''")
     db.execute("CREATE TABLE IF NOT EXISTS access_settings (id INTEGER PRIMARY KEY CHECK (id = 1), salt TEXT NOT NULL, code_hash TEXT NOT NULL, version INTEGER NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS access_grants (telegram_id INTEGER PRIMARY KEY, version INTEGER NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS access_bans (telegram_id INTEGER PRIMARY KEY, banned_at TEXT NOT NULL)")
@@ -473,6 +476,7 @@ async def api_me(request: web.Request) -> web.Response:
                  "language_code": str(user.get("language_code", "ru"))[:12]},
         "group": d.group, "timezone": d.tz_name, "preferences": prefs, "is_admin": require_admin(request, d),
         "registration": {"registered": registered is not None, "full_name": registered["full_name"] if registered else ""},
+        "bio": registered["bio"] if registered and "bio" in registered.keys() else "",
         "access": access,
         "notifications_note": "Настройки сохраняются в профиле. Для фоновых push-уведомлений нужна отдельная серверная рассылка.",
     })
@@ -516,6 +520,36 @@ async def api_register(request: web.Request) -> web.Response:
     return web.json_response({"saved": True, "registration": saved})
 
 
+async def api_profile(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 1))
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        raise web.HTTPBadRequest(text="Ожидается JSON")
+    if not isinstance(body, dict) or set(body) != {"bio"} or not isinstance(body["bio"], str):
+        raise web.HTTPBadRequest(text="Некорректное описание профиля")
+    bio = body["bio"].strip()
+    if len(bio) > 70:
+        raise web.HTTPBadRequest(text="Описание должно быть не длиннее 70 символов")
+    async with d.users_lock:
+        def save():
+            db = _db_connect(d)
+            try:
+                if not db.execute("SELECT 1 FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone():
+                    return False
+                db.execute("UPDATE registered_users SET bio = ?, updated_at = ? WHERE telegram_id = ?",
+                           (bio, datetime.now(timezone.utc).isoformat(timespec="seconds"), uid))
+                db.commit()
+                return True
+            finally:
+                db.close()
+        saved = await asyncio.to_thread(save)
+    if not saved:
+        return web.json_response({"error": "registration_required", "message": "Сначала заполните профиль."}, status=428)
+    return web.json_response({"bio": bio, "saved": True})
+
+
 async def api_preferences(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     user = request.get("user") or {}
@@ -552,6 +586,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_post("/api/admin/users/{user_id:\\d+}/kick", api_admin_kick_user)
     app.router.add_post("/api/admin/users/{user_id:\\d+}/restore", api_admin_restore_user)
     app.router.add_post("/api/register", api_register)
+    app.router.add_post("/api/profile", api_profile)
     app.router.add_post("/api/preferences", api_preferences)
     return app
 
