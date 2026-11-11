@@ -96,6 +96,36 @@ def send_push(data_dir: Path, target: dict, event_key: str, payload: dict, priva
         db.close()
     return True
 
+
+def active_subscriptions(data_dir: Path) -> list[dict]:
+    """All registered, non-banned users with an active Web Push subscription."""
+    db = _connect(data_dir)
+    try:
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "registered_users" not in tables:
+            return []
+        if "access_bans" in tables:
+            rows = db.execute("""SELECT s.telegram_id,s.endpoint,s.subscription_json
+                FROM webpush_subscriptions s
+                JOIN registered_users u ON u.telegram_id=s.telegram_id
+                LEFT JOIN access_bans b ON b.telegram_id=s.telegram_id
+                WHERE b.telegram_id IS NULL""").fetchall()
+        else:
+            rows = db.execute("""SELECT s.telegram_id,s.endpoint,s.subscription_json
+                FROM webpush_subscriptions s
+                JOIN registered_users u ON u.telegram_id=s.telegram_id""").fetchall()
+        result = []
+        for uid, endpoint, raw in rows:
+            try:
+                subscription = json.loads(raw)
+            except (TypeError, ValueError):
+                continue
+            result.append({"telegram_id": int(uid), "endpoint": endpoint, "subscription": subscription})
+        return result
+    finally:
+        db.close()
+
+
 def send_test_push(data_dir: Path, telegram_id: int, payload: dict, private_key: str, subject: str) -> int:
     db = _connect(data_dir)
     try:
