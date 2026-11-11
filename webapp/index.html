@@ -489,9 +489,8 @@ function openStudentProfile(student){
  const labels={student:'Студент',deputy:'Заместитель старосты',starosta:'Староста',moderator:'Модератор',support:'Разработчик'};
  const badges=el('div','role-badges');roles.forEach(role=>badges.append(makeRoleBadge(role,labels[role]||'Студент')));hero.append(badges);
  const actions=el('div','student-profile-actions');
- const copyBtn=el('button','student-profile-action','Скопировать username');copyBtn.type='button';copyBtn.disabled=!username;copyBtn.onclick=()=>copyProfileValue('@'+username,'Username');
  const dmBtn=el('button','student-profile-action primary','Написать в Telegram');dmBtn.type='button';dmBtn.disabled=!username;dmBtn.onclick=()=>{const url='https://t.me/'+encodeURIComponent(username);if(tg?.openTelegramLink)tg.openTelegramLink(url);else window.open(url,'_blank','noopener,noreferrer')};
- actions.append(copyBtn,dmBtn);hero.append(actions);sheet.append(hero);
+ actions.append(dmBtn);hero.append(actions);sheet.append(hero);
  const info=el('div','student-profile-info');
  const addRow=(label,value,action)=>{const row=el('div','info-row');row.append(el('span','',label));if(action){const btn=el('button','student-profile-value',value||'Не указано');btn.type='button';btn.onclick=action;row.append(btn)}else row.append(el('b','',value||'Не указано'));info.append(row)};
  addRow('Группа',GROUP);addRow('Роль',roles.map(r=>labels[r]||r).join(', '));addRow('Telegram',username?'@'+username:'Не указан',username?()=>copyProfileValue('@'+username,'Username'):null);addRow('Дата рождения',student.birth_date?new Date(student.birth_date+'T00:00:00').toLocaleDateString('ru-RU'):'Не указана');addRow('ID пользователя',String(student.telegram_id||''));
