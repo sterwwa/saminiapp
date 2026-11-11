@@ -890,35 +890,49 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
         def read_report():
             db = _db_connect(d)
             try:
-                rows = db.execute("""
-                    SELECT js.lesson_number, js.subject, ru.full_name
-                    FROM journal_sessions js
-                    JOIN journal_absences ja
-                      ON ja.lesson_date = js.lesson_date AND ja.lesson_number = js.lesson_number
-                    JOIN registered_users ru ON ru.telegram_id = ja.student_id
-                    WHERE js.lesson_date = ? AND js.subject <> ''
-                      AND ru.full_name IS NOT NULL AND ru.full_name <> ''
-                    ORDER BY CAST(js.lesson_number AS INTEGER), ru.full_name COLLATE NOCASE
+                sessions = db.execute("""
+                    SELECT lesson_number, subject
+                    FROM journal_sessions
+                    WHERE lesson_date = ? AND subject <> ''
+                    ORDER BY CAST(lesson_number AS INTEGER), lesson_number
                 """, (report_day.isoformat(),)).fetchall()
-                return [(str(r["lesson_number"]), str(r["subject"]), str(r["full_name"])) for r in rows]
+                absences = db.execute("""
+                    SELECT ja.lesson_number, ru.full_name
+                    FROM journal_absences ja
+                    JOIN registered_users ru ON ru.telegram_id = ja.student_id
+                    WHERE ja.lesson_date = ?
+                      AND ru.full_name IS NOT NULL AND TRIM(ru.full_name) <> ''
+                    ORDER BY CAST(ja.lesson_number AS INTEGER), ru.full_name COLLATE NOCASE
+                """, (report_day.isoformat(),)).fetchall()
+                absent_by_lesson = {}
+                for row in absences:
+                    absent_by_lesson.setdefault(str(row["lesson_number"]), [])
+                    name = str(row["full_name"]).strip()
+                    if name not in absent_by_lesson[str(row["lesson_number"])]:
+                        absent_by_lesson[str(row["lesson_number"])].append(name)
+                return [(str(row["lesson_number"]), str(row["subject"]).strip()) for row in sessions], absent_by_lesson
             finally:
                 db.close()
-        report = await asyncio.to_thread(read_report)
+        sessions, absent_by_lesson = await asyncio.to_thread(read_report)
 
-    lines = [f"📋 Отсутствующие за {report_day:%d.%m.%Y}", f"Группа: {d.group}", ""]
-    if report:
-        grouped = {}
-        for lesson_number, subject, name in report:
-            grouped.setdefault((lesson_number, subject), [])
-            if name not in grouped[(lesson_number, subject)]:
-                grouped[(lesson_number, subject)].append(name)
-        for (lesson_number, subject), names in grouped.items():
-            lines.append(f"{lesson_number}-я пара — {subject}:")
-            lines.extend(f"• {name}" for name in names)
-            lines.append("")
+    lines = [
+        f"📋 Посещаемость за {report_day:%d.%m.%Y}",
+        f"Группа: {d.group}",
+        ""
+    ]
+    if not sessions:
+        lines.append("В расписании на эту дату пары не найдены.")
     else:
-        lines.append("Отсутствующих за этот день нет.")
-    message = "\n".join(lines).strip()
+        for lesson_number, subject in sessions:
+            lines.append(f"📚 {lesson_number}-я пара — {subject or 'Предмет не указан'}")
+            names = absent_by_lesson.get(lesson_number, [])
+            if names:
+                lines.append("Отсутствовали:")
+                lines.extend(f"• {name}" for name in names)
+            else:
+                lines.append("Отсутствующих нет.")
+            lines.append("")
+    message = "\\n".join(lines).strip()
 
     try:
         async with ClientSession(timeout=ClientTimeout(total=12)) as session:
@@ -940,7 +954,7 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
         log.exception("Не удалось связаться с Telegram при отправке отчёта пользователю %s", uid)
         return web.json_response({"error": "telegram_unavailable", "message": "Не удалось связаться с Telegram. Попробуйте позже."}, status=502)
 
-    return web.json_response({"sent": True, "date": report_day.isoformat()})
+    return web.json_response({"sent": True, "date": report_day.isoformat(), "sessions_count": len(sessions)})
 
 
 async def api_journal_save(request: web.Request) -> web.Response:
