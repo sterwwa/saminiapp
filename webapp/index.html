@@ -878,7 +878,14 @@ function renderSettings(){
  app.append(settingsRow('M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M11 18h2','Перейти в приложение','Открыть отдельно от Telegram','',()=>openStandaloneAppSheet()));
  const help=settingsGroup(root,'Помощь');
  help.append(settingsRow('M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.5 9a2.5 2.5 0 1 1 4.5 1.5c-1.2.8-2 1.2-2 2.5M12 17h.01','Поддержка','Написать @met1sa','',()=>{const url='https://t.me/met1sa';if(tg?.openTelegramLink)tg.openTelegramLink(url);else window.open(url,'_blank','noopener,noreferrer')}));
- const appearance=settingsGroup(root,'Оформление'),row=el('div','settings-row'),ico=el('span','settings-row-icon');ico.innerHTML=settingsIcon('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 3v18');const copy=el('span','settings-row-copy');copy.append(el('b','','Тема приложения'),el('small','','Тёмная или светлая тема'));const select=el('select','role-select');select.style.maxWidth='130px';[['dark','Тёмная'],['light','Светлая']].forEach(([v,l])=>{const o=el('option','',l);o.value=v;select.append(o)});select.value=['dark','light'].includes(themePreference)?themePreference:'dark';select.onchange=()=>{applyTheme(select.value);toast(select.value==='dark'?'Тёмная тема включена':'Светлая тема включена')};row.append(ico,copy,select);appearance.append(row);
+ const appearance=settingsGroup(root,'Оформление'),row=el('div','settings-row'),ico=el('span','settings-row-icon');ico.innerHTML=settingsIcon('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 3v18');const copy=el('span','settings-row-copy');copy.append(el('b','','Тема приложения'),el('small','','Тёмная или светлая тема'));const select=el('select','role-select');select.style.maxWidth='130px';[['dark','Тёмная'],['light','Светлая']].forEach(([v,l])=>{const o=el('option','',l);o.value=v;select.append(o)});select.value=['dark','light'].includes(themePreference)?themePreference:'dark';select.onchange=()=>{applyTheme(select.value);toast(select.value==='dark'?'Тёмная тема включена':'Светлая тема включена')};row.append(ico,copy,select);
+appearance.append(row);
+ if(!tg?.initData){
+  const account=settingsGroup(root,'Аккаунт');
+  const logout=settingsRow('M10 17l5-5-5-5M15 12H3m9-9h6a3 3 0 0 1 3 3v12a3 3 0 0 1-3 3h-6','Выйти из профиля','Завершить вход в этом браузере','',()=>logoutBrowserProfile());
+  logout.style.color='#f87171';logout.querySelector('.settings-row-icon').style.color='#f87171';
+  account.append(logout);
+ }
  updateFloatingSchedule();
 }
 function openStandaloneAppSheet(){
@@ -954,6 +961,14 @@ $('#copyGenerated').onclick=async()=>{try{await navigator.clipboard.writeText($(
 function openRegistration(edit=false){$('#fullName').value=state.me?.registration?.full_name||'';$('#nameConsent').checked=false;$('#registrationError').textContent='';$('#registrationGate').hidden=false;if(edit)$('#fullName').focus()}
 $('#registrationForm').addEventListener('submit',async e=>{e.preventDefault();const button=e.submitter;button.disabled=true;$('#registrationError').textContent='';try{await api('/api/register',{method:'POST',body:JSON.stringify({full_name:$('#fullName').value,consent:$('#nameConsent').checked})});$('#registrationGate').hidden=true;toast('Профиль сохранён');await refreshAll(true)}catch(err){$('#registrationError').textContent=err.message}finally{button.disabled=false}});
 async function savePref(key,value){const inputs=[...document.querySelectorAll('.switch')];inputs.forEach(i=>i.disabled=true);try{const result=await api('/api/preferences',{method:'POST',body:JSON.stringify({[key]:value})});state.me.preferences=result.preferences;toast('Настройка сохранена')}catch(e){toast(e.message);renderSettings()}finally{inputs.forEach(i=>i.disabled=false)}}
+async function logoutBrowserProfile(){
+ if(!confirm('Выйти из профиля на этом устройстве?'))return;
+ try{
+  const response=await fetch('/auth/logout',{method:'POST',credentials:'same-origin',headers:{'Accept':'application/json'}});
+  if(!response.ok)throw new Error('Не удалось завершить сеанс');
+  location.replace('/');
+ }catch(e){toast(e.message||'Ошибка выхода')}
+}
 let telegramLoginShown=false;
 function showTelegramLogin(){
  if(telegramLoginShown||tg?.initData)return;
