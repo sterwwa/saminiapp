@@ -128,14 +128,6 @@ async function changeDate(d){state.sel=d;state.error=null;renderSchedule();try{i
 function upcoming(){const n=now(),items=[];for(let offset=0;offset<8;offset++){const d=add(n.date,offset),week=state.cache.get(monday(d))?.data,day=week?.days?.find(x=>x.date===d);if(!day||day.error)continue;for(const l of day.lessons){if(!l.start||!l.end)continue;const start=min(l.start);if(offset===0&&start<=n.min)continue;items.push({date:d,offset,lesson:l})}}return items.slice(0,5)}
 async function renderNext(){
  const root=$('#nextContent');root.replaceChildren();
- const header=el('div','home-head'),avatar=el('div','home-avatar','C'),brand=el('div','home-brand');
- brand.append(el('b','','ca 2 25'),el('small','','гпт'));
- const tools=el('div','home-tools'),help=el('button','home-help','Как пользоваться');
- help.onclick=()=>toast('Инструкция по приложению скоро появится');
- const bell=el('button','home-tool','♧');bell.setAttribute('aria-label','Уведомления');bell.onclick=()=>showPage('settings');
- const question=el('button','home-tool','?');question.setAttribute('aria-label','Помощь');question.onclick=()=>toast('Помощь скоро появится');
- const settings=el('button','home-tool','⚙');settings.setAttribute('aria-label','Настройки');settings.onclick=()=>showPage('settings');
- tools.append(help,bell,question,settings);header.append(avatar,brand,tools);root.append(header);
  const status=el('section','home-status'),live=el('div','home-live');live.append(el('i'),el('span','','СЕЙЧАС'));
  status.append(live,el('p','','Пока нет активного опроса. Перед парой бот сам разошлёт студентам опрос, а живая сводка появится здесь.'));
  const attendance=el('button','home-link','Посещаемость за сегодня →');attendance.onclick=()=>{showPage('students');toast('Раздел посещаемости пока не подключён')};status.append(attendance);root.append(status);
