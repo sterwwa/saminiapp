@@ -108,10 +108,17 @@ async def get_miniapp_lessons(day: date) -> list[dict]:
     return await get_lessons(day, fresh=True)
 
 
-def keyboard() -> InlineKeyboardMarkup:
-    # В приветствии оставляем только переход в Mini App.
+def keyboard(private_chat: bool = False) -> InlineKeyboardMarkup:
+    # В личном чате запускаем Mini App нативной Telegram-кнопкой.
+    # В группах web_app-кнопки недоступны — там используем ссылку t.me.
     rows = []
-    if MINIAPP_LINK:  # в беседах web_app-кнопки запрещены, поэтому обычная ссылка t.me
+    if private_chat:
+        app_url = WEBAPP_URL or "https://sa225-miniapp-production.up.railway.app"
+        rows.append([InlineKeyboardButton(
+            text="📱 Открыть приложение",
+            web_app=WebAppInfo(url=app_url),
+        )])
+    elif MINIAPP_LINK:
         rows.append([InlineKeyboardButton(text="📱 Открыть приложение", url=MINIAPP_LINK)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -211,7 +218,7 @@ HELP = (
 
 @dp.message(Command("start"))
 async def cmd_start(m: Message) -> None:
-    await m.answer(HELP, reply_markup=keyboard())
+    await m.answer(HELP, reply_markup=keyboard(private_chat=m.chat.type == "private"))
 
 
 async def send_view(chat_id: int, what: str) -> None:
