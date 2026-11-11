@@ -68,7 +68,7 @@ def _telegram_login_user(payload: dict, token: str, max_age: int = 86400) -> dic
     if issued > now + 30 or now - issued > max_age:
         return None
     fields = {str(k): str(v) for k, v in payload.items() if k != "hash" and v is not None}
-    check_string = "\\n".join(f"{k}={fields[k]}" for k in sorted(fields))
+    check_string = "\n".join(f"{k}={fields[k]}" for k in sorted(fields))
     secret = hashlib.sha256(token.encode("utf-8")).digest()
     expected = hmac.new(secret, check_string.encode("utf-8"), hashlib.sha256).hexdigest()
     if not hmac.compare_digest(expected, supplied_hash):
