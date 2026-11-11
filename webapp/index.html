@@ -149,7 +149,7 @@ async function renderNext(){
  ['Расписание','Пары, семестр, каникулы','▦','#16875c','schedule'],
  ['Журнал','Посещаемость по дням','▤','#176c50','journal'],
  ['Объявления','Важное для группы','⚑','#7040c7','announcements'],
- ['База знаний','Файлы, методички и конспекты группы','▣','#b96822','knowledge']
+ ['База знаний','Чаты нашей группы','▣','#b96822','knowledge']
  ];
  paths.forEach(([title,desc,icon,color,key],i)=>{
   const b=el('button','home-action'+(key==='knowledge'?' wide':'')),ic=el('span','home-action-icon',icon);ic.style.background=color;
