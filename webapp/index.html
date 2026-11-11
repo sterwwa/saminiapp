@@ -154,11 +154,35 @@ async function renderNext(){
  paths.forEach(([title,desc,icon,color,key],i)=>{
   const b=el('button','home-action'+(key==='knowledge'?' wide':'')),ic=el('span','home-action-icon',icon);ic.style.background=color;
   const copy=el('span','home-action-copy');copy.append(el('b','',title),el('small','',desc));b.append(ic,copy);
-  b.onclick=()=>{if(key==='students')showPage('students');else if(key==='journal')showPage('journal');else if(key==='schedule')showPage('schedule');else if(key==='settings')showPage('settings');else toast(title+' — раздел пока не подключён')};
+  b.onclick=()=>{if(key==='students')showPage('students');else if(key==='journal')showPage('journal');else if(key==='schedule')showPage('schedule');else if(key==='settings')showPage('settings');else if(key==='knowledge')renderKnowledge();else toast(title+' — раздел пока не подключён')};
   grid.append(b);
  });
  root.append(grid);
-}let journalRenderSeq=0;
+}
+function renderKnowledge(){
+ const root=$('#nextContent');root.replaceChildren();
+ const back=el('button','home-action wide'),backIcon=el('span','home-action-icon','‹');backIcon.style.background='#49415f';
+ const backCopy=el('span','home-action-copy');backCopy.append(el('b','','Назад'),el('small','','Вернуться на главную'));
+ back.append(backIcon,backCopy);back.onclick=()=>renderNext();root.append(back);
+ root.append(el('div','page-title','База знаний'),el('p','page-sub','Чаты нашей группы'));
+ const chats=[
+  {name:'Сашки',url:null,desc:'Временно недоступно'},
+  {name:'Предметы Виолетты',url:'https://t.me/+rMxZUiWhQ0Y0MDFi',desc:'Открыть чат в Telegram'},
+  {name:'Предметы Али',url:'https://t.me/+2OvdHIuozc4xNjFi',desc:'Открыть чат в Telegram'}
+ ];
+ const grid=el('div','home-grid');
+ chats.forEach((chat,index)=>{
+  const item=el('button','home-action wide');item.type='button';
+  const icon=el('span','home-action-icon',chat.url?'↗':'…');icon.style.background=chat.url?(index===1?'#7650c9':'#9a5bba'):'#55515e';
+  const copy=el('span','home-action-copy');copy.append(el('b','',chat.name),el('small','',chat.desc));
+  item.append(icon,copy);
+  if(chat.url)item.onclick=()=>{const w=window.open(chat.url,'_blank','noopener,noreferrer');if(!w)window.location.href=chat.url};
+  else{item.disabled=true;item.setAttribute('aria-label',chat.name+' — временно недоступно');item.style.opacity='.72';item.style.cursor='not-allowed'}
+  grid.append(item);
+ });
+ root.append(grid);
+}
+let journalRenderSeq=0;
 async function renderJournal(){
  const root=$('#journalContent'),seq=++journalRenderSeq;root.replaceChildren(el('div','skeleton'));
  try{
