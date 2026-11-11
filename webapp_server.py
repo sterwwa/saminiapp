@@ -215,6 +215,31 @@ def require_admin(request: web.Request, d: Deps) -> bool:
         return False
 
 
+def require_invite_manager(request: web.Request, d: Deps) -> bool:
+    user = request.get("user") or {}
+    try:
+        uid = int(user.get("id", 0))
+    except (TypeError, ValueError):
+        return False
+    if uid in d.admin_ids:
+        return True
+    db = _db_connect(d)
+    try:
+        row = db.execute("SELECT roles_json, role FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone()
+        if not row:
+            return False
+        roles = json.loads(row["roles_json"] or "[]") if "roles_json" in row.keys() else []
+        if not isinstance(roles, list):
+            roles = []
+        if row["role"]:
+            roles.append(row["role"])
+        return "starosta" in roles
+    except (sqlite3.Error, ValueError, TypeError):
+        return False
+    finally:
+        db.close()
+
+
 def _user_db(d: Deps) -> Path:
     return d.data_dir / "miniapp_users.sqlite3"
 
@@ -359,7 +384,7 @@ async def api_access(request: web.Request) -> web.Response:
 
 async def api_admin_current_access_code(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
-    if not require_admin(request, d):
+    if not require_invite_manager(request, d):
         return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
     async with d.users_lock:
         def read():
@@ -375,7 +400,7 @@ async def api_admin_current_access_code(request: web.Request) -> web.Response:
 
 async def api_admin_access_code(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
-    if not require_admin(request, d):
+    if not require_invite_manager(request, d):
         return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
     try:
         body = await request.json()
