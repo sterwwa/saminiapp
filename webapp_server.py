@@ -778,15 +778,42 @@ async def api_journal_history(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="Некорректный период")
     if start_day > end_day or (end_day - start_day).days > 61:
         raise web.HTTPBadRequest(text="Период должен быть не длиннее 62 дней")
+
+    # Discover actual lesson dates from the timetable, not just dates already marked.
+    days = [start_day + timedelta(days=i) for i in range((end_day - start_day).days + 1)]
+    semaphore = asyncio.Semaphore(4)
+
+    async def scheduled_sessions(day: date) -> list[dict]:
+        async with semaphore:
+            try:
+                lessons = _day_json(d, day, await d.get_lessons(day), False)["lessons"]
+                return [{"lesson_date": day.isoformat(),
+                         "lesson_number": str(item.get("number", "")).strip(),
+                         "subject": str(item.get("subject", "")).strip()}
+                        for item in lessons
+                        if str(item.get("number", "")).strip() and str(item.get("subject", "")).strip()]
+            except Exception as exc:
+                log.debug("Не удалось получить занятия для журнала на %s: %s", day, exc)
+                return []
+
+    discovered = [item for group in await asyncio.gather(*(scheduled_sessions(day) for day in days)) for item in group]
     async with d.users_lock:
         def read():
             db = _db_connect(d)
             try:
+                now_text = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                for session in discovered:
+                    db.execute(
+                        "INSERT INTO journal_sessions (lesson_date, lesson_number, subject, marked_by, updated_at) VALUES (?, ?, ?, 0, ?) "
+                        "ON CONFLICT(lesson_date, lesson_number) DO UPDATE SET subject=CASE WHEN journal_sessions.subject='' THEN excluded.subject ELSE journal_sessions.subject END",
+                        (session["lesson_date"], session["lesson_number"], session["subject"], now_text)
+                    )
+                db.commit()
                 students = [dict(row) for row in db.execute(
                     "SELECT telegram_id, full_name FROM registered_users ORDER BY full_name COLLATE NOCASE"
                 ).fetchall()]
                 sessions = [dict(row) for row in db.execute(
-                    "SELECT lesson_date, lesson_number, subject FROM journal_sessions WHERE lesson_date BETWEEN ? AND ? ORDER BY lesson_date, CAST(lesson_number AS INTEGER)",
+                    "SELECT lesson_date, lesson_number, subject FROM journal_sessions WHERE lesson_date BETWEEN ? AND ? AND subject<>'' ORDER BY subject COLLATE NOCASE, lesson_date, CAST(lesson_number AS INTEGER)",
                     (start_day.isoformat(), end_day.isoformat())
                 ).fetchall()]
                 absences = [dict(row) for row in db.execute(
