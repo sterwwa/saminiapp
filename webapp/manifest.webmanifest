@@ -1,0 +1,21 @@
+{
+  "id": "/",
+  "name": "Вася Бот",
+  "short_name": "Вася Бот",
+  "description": "Расписание группы и всё важное — в одном приложении.",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#08080d",
+  "theme_color": "#090909",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
