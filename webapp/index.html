@@ -846,7 +846,8 @@ function renderSettings(){
  const root=$('#settingsContent');root.replaceChildren();
  const group=state.me?.group||GROUP||'—',timezone=state.me?.timezone||TZ||'Не указан';
  const grp=settingsGroup(root,'Группа');
- grp.append(settingsRow('M12 5v14m-7-7h14','Пригласить студентов','Отправьте ссылку участникам группы','',()=>openInviteSheet()));
+ const inviteRoles=Array.isArray(state.me?.roles)&&state.me.roles.length?state.me.roles:[state.me?.role||'student'];
+ if(inviteRoles.includes('support')||inviteRoles.includes('starosta'))grp.append(settingsRow('M12 5v14m-7-7h14','Пригласить студентов','Отправьте ссылку участникам группы','',()=>openInviteSheet()));
  grp.append(settingsRow('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l3 2','Часовой пояс','Время расписания группы',timezone,()=>openSettingsSheet('Часовой пояс',`Сейчас используется часовой пояс группы: ${timezone}. Изменение часового пояса доступно администратору.`)));
  const notify=settingsGroup(root,'Уведомления'),prefs=state.me?.preferences||{lesson_reminders:true,schedule_changes:true,daily_summary:true};
  notify.append(settingsRow('M12 19l9-7-9-7-9 7 9 7z','Куда присылать','Личные сообщения Telegram','Telegram',()=>openSettingsSheet('Куда присылать','Уведомления отправляются в личный чат с ботом. Сначала откройте @vasya_sa_bot и нажмите Start.')));
