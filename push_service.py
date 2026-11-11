@@ -2,6 +2,7 @@
 from __future__ import annotations
 import json
 import sqlite3
+import time
 from pathlib import Path
 from pywebpush import WebPushException, webpush
 
@@ -94,3 +95,25 @@ def send_push(data_dir: Path, target: dict, event_key: str, payload: dict, priva
     finally:
         db.close()
     return True
+
+def send_test_push(data_dir: Path, telegram_id: int, payload: dict, private_key: str, subject: str) -> int:
+    db = _connect(data_dir)
+    try:
+        rows = db.execute(
+            "SELECT endpoint, subscription_json FROM webpush_subscriptions WHERE telegram_id=?",
+            (telegram_id,),
+        ).fetchall()
+    finally:
+        db.close()
+    sent = 0
+    for endpoint, raw in rows:
+        try:
+            subscription = json.loads(raw)
+        except (TypeError, ValueError):
+            continue
+        target = {"telegram_id": telegram_id, "endpoint": endpoint, "subscription": subscription}
+        event_key = f"test:{time.time_ns()}"
+        if send_push(data_dir, target, event_key, payload, private_key, subject):
+            sent += 1
+    return sent
+
