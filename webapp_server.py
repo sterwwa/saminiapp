@@ -876,32 +876,48 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
     uid = int((request.get("user") or {}).get("id", 0))
     if not _journal_can_edit(d, uid):
         return web.json_response({"error": "forbidden", "message": "Отправлять отчёт могут только староста и зам. старосты."}, status=403)
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        body = {}
+    raw_day = body.get("date") if isinstance(body, dict) else None
+    try:
+        report_day = date.fromisoformat(raw_day) if raw_day else datetime.now(d.tz).date()
+    except (TypeError, ValueError):
+        return web.json_response({"error": "invalid_date", "message": "Некорректная дата отчёта."}, status=400)
 
-    today = datetime.now(d.tz).date()
     async with d.users_lock:
         def read_report():
             db = _db_connect(d)
             try:
                 rows = db.execute("""
-                    SELECT DISTINCT ru.full_name
+                    SELECT js.lesson_number, js.subject, ru.full_name
                     FROM journal_sessions js
                     JOIN journal_absences ja
                       ON ja.lesson_date = js.lesson_date AND ja.lesson_number = js.lesson_number
                     JOIN registered_users ru ON ru.telegram_id = ja.student_id
                     WHERE js.lesson_date = ? AND js.subject <> ''
                       AND ru.full_name IS NOT NULL AND ru.full_name <> ''
-                    ORDER BY ru.full_name COLLATE NOCASE
-                """, (today.isoformat(),)).fetchall()
-                return [str(row["full_name"]) for row in rows]
+                    ORDER BY CAST(js.lesson_number AS INTEGER), ru.full_name COLLATE NOCASE
+                """, (report_day.isoformat(),)).fetchall()
+                return [(str(r["lesson_number"]), str(r["subject"]), str(r["full_name"])) for r in rows]
             finally:
                 db.close()
         report = await asyncio.to_thread(read_report)
 
-    lines = [f"📋 Отсутствующие за {today:%d.%m.%Y}", f"Группа: {d.group}", ""]
+    lines = [f"📋 Отсутствующие за {report_day:%d.%m.%Y}", f"Группа: {d.group}", ""]
     if report:
-        lines.extend(f"• {name}" for name in report)
+        grouped = {}
+        for lesson_number, subject, name in report:
+            grouped.setdefault((lesson_number, subject), [])
+            if name not in grouped[(lesson_number, subject)]:
+                grouped[(lesson_number, subject)].append(name)
+        for (lesson_number, subject), names in grouped.items():
+            lines.append(f"{lesson_number}-я пара — {subject}:")
+            lines.extend(f"• {name}" for name in names)
+            lines.append("")
     else:
-        lines.append("Сегодня отсутствующих нет.")
+        lines.append("Отсутствующих за этот день нет.")
     message = "\n".join(lines).strip()
 
     try:
@@ -921,10 +937,10 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
             log.warning("Telegram не отправил отчёт посещаемости пользователю %s: %s", uid, description)
             return web.json_response({"error": "telegram_send_failed", "message": "Telegram не смог отправить сообщение. Попробуйте позже."}, status=502)
     except Exception:
-        log.exception("Не удалось отправить отчёт посещаемости пользователю %s", uid)
+        log.exception("Не удалось связаться с Telegram при отправке отчёта пользователю %s", uid)
         return web.json_response({"error": "telegram_unavailable", "message": "Не удалось связаться с Telegram. Попробуйте позже."}, status=502)
 
-    return web.json_response({"sent": True, "date": today.isoformat()})
+    return web.json_response({"sent": True, "date": report_day.isoformat()})
 
 
 async def api_journal_save(request: web.Request) -> web.Response:
