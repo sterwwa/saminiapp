@@ -850,6 +850,10 @@ async def api_journal_history(request: web.Request) -> web.Response:
                 sessions = [dict(row) for row in db.execute(
                     "SELECT lesson_date, lesson_number, subject FROM journal_sessions WHERE subject<>'' ORDER BY subject COLLATE NOCASE, lesson_date, CAST(lesson_number AS INTEGER)"
                 ).fetchall()]
+                for session in sessions:
+                    compact_subject = "".join(ch for ch in str(session["subject"]).casefold() if ch.isalnum())
+                    if compact_subject.startswith("технологиифизическогоуровня"):
+                        session["subject"] = "Технологии физического уровня"
                 absences = [dict(row) for row in db.execute(
                     "SELECT lesson_date, lesson_number, student_id FROM journal_absences"
                 ).fetchall()]
