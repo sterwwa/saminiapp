@@ -567,6 +567,8 @@ async def notify_miniapp_users(pref_key: str, event_key: str, message: str) -> N
             delivered += 1
         except TelegramAPIError as e:
             log.info("Не удалось отправить уведомление пользователю %s: %s", uid, e)
+        except Exception:
+            log.exception("Ошибка доставки уведомления пользователю %s", uid)
         await asyncio.sleep(0.04)
     log.info("Личные уведомления %s: отправлено %d из %d", pref_key, delivered, len(targets))
 
