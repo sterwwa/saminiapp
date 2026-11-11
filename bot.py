@@ -218,6 +218,19 @@ HELP = (
 
 @dp.message(Command("start"))
 async def cmd_start(m: Message) -> None:
+    # При повторном /start удаляем прежнее сохранённое приветствие,
+    # чтобы в личном чате оставалось только актуальное.
+    if m.chat.type == "private":
+        first_messages = state.data.setdefault("private_first_messages", {})
+        chat_key = str(m.chat.id)
+        old_message_id = first_messages.pop(chat_key, None)
+        if old_message_id:
+            state.save()
+            try:
+                await bot.delete_message(m.chat.id, old_message_id)
+            except TelegramAPIError as e:
+                log.info("Не удалось удалить прежнее приветствие в чате %s: %s", m.chat.id, e)
+
     await m.answer(HELP, reply_markup=keyboard(private_chat=m.chat.type == "private"))
 
 
