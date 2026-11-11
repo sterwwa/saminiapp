@@ -815,7 +815,7 @@ async function checkLessonReminder(){
  current=now();
  if(!day||day.error||day.date!==current.date)return;
  const next=(day.lessons||[]).filter(l=>l.start&&l.end).sort((a,b)=>min(a.start)-min(b.start)).find(l=>min(l.start)>current.min&&min(l.start)-current.min<=15);
- if(!next)return;
+ if(!next){if(document.getElementById('lessonReminderBanner'))closeLessonReminder();return}
  showLessonReminder(current.date,next,min(next.start)-current.min);
 }
 async function renderNext(){
