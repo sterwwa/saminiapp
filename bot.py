@@ -88,6 +88,13 @@ async def get_lessons(day: date, fresh: bool = False) -> list[dict]:
         sched = await client.get_day(day)
     except ScheduleError as e:
         state.note_error(str(e), now())
+        # Если сайт техникума временно недоступен, показываем последний
+        # сохранённый снимок этого дня вместо пустого экрана Mini App.
+        snapshot = state.get_snapshot(day)
+        if snapshot is not None:
+            log.warning("Источник расписания недоступен; используем сохранённый снимок на %s", day)
+            _cache[day] = (time.monotonic(), snapshot)
+            return snapshot
         raise
     state.note_ok(now())
     lessons = [l.to_dict() for l in sched.lessons]
