@@ -240,6 +240,31 @@ async def cmd_start(m: Message) -> None:
     await m.answer(HELP, reply_markup=keyboard(private_chat=m.chat.type == "private"))
 
 
+@dp.message(Command("test_change"))
+async def cmd_test_change(m: Message) -> None:
+    """Send a simulated schedule-change notice only to the requesting admin."""
+    if m.chat.type != "private" or not m.from_user or m.from_user.id not in ADMIN_IDS:
+        return
+    try:
+        prefs = json.loads((DATA_DIR / "miniapp_preferences.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        prefs = {}
+    user_prefs = prefs.get(str(m.from_user.id), {}) if isinstance(prefs, dict) else {}
+    if isinstance(user_prefs, dict) and user_prefs.get("schedule_changes", True) is False:
+        await m.answer("Сначала включи «Изменения расписания» в настройках Mini App.")
+        return
+    day = now().date() + timedelta(days=1)
+    old = [{"number": 1, "subject": "Математика", "room": "204", "teacher": "Иванова"}]
+    new = [
+        {"number": 1, "subject": "Математика", "room": "305", "teacher": "Иванова"},
+        {"number": 2, "subject": "Информатика", "room": "112", "teacher": "Петров"},
+    ]
+    message = "🧪 <b>ТЕСТ УВЕДОМЛЕНИЯ</b>\nЭто учебная симуляция, реальное расписание не менялось.\n\n"
+    message += format_change(GROUP_NAME, day, old, new, times=bells.day_ranges(day))
+    await bot.send_message(m.from_user.id, "📬 " + message)
+    log.info("Тест изменения расписания отправлен администратору %s", m.from_user.id)
+
+
 @dp.message(Command("c"))
 async def cmd_clear(m: Message) -> None:
     """Очищает доступную историю личного чата и заново показывает приветствие."""
@@ -661,6 +686,7 @@ async def main() -> None:
     bot.session.middleware(cleanup_private_outgoing)
     await bot.set_my_commands([
         BotCommand(command="c", description="Очистить чат и отправить приветствие"),
+        BotCommand(command="test_change", description="Тест уведомления об изменении расписания (админ)"),
     ])
 
     global scheduler
