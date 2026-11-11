@@ -937,7 +937,16 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
         async with ClientSession(timeout=ClientTimeout(total=12)) as session:
             async with session.post(
                 f"https://api.telegram.org/bot{d.token}/sendMessage",
-                json={"chat_id": uid, "text": message}
+                json={
+                    "chat_id": uid,
+                    "text": message,
+                    "reply_markup": {
+                        "inline_keyboard": [[{
+                            "text": "📋 Скопировать",
+                            "copy_text": {"text": message[:256]}
+                        }]]
+                    } if len(message) <= 256 else None
+                }
             ) as response:
                 result = await response.json(content_type=None)
         if not result.get("ok"):
@@ -952,6 +961,26 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
     except Exception:
         log.exception("Не удалось связаться с Telegram при отправке отчёта пользователю %s", uid)
         return web.json_response({"error": "telegram_unavailable", "message": "Не удалось связаться с Telegram. Попробуйте позже."}, status=502)
+
+    # Отчёт автоматически удаляется через 3 минуты после отправки.
+    sent_message_id = (result.get("result") or {}).get("message_id")
+    if sent_message_id:
+        async def delete_report_later() -> None:
+            await asyncio.sleep(180)
+            try:
+                async with ClientSession(timeout=ClientTimeout(total=12)) as delete_session:
+                    async with delete_session.post(
+                        f"https://api.telegram.org/bot{d.token}/deleteMessage",
+                        json={"chat_id": uid, "message_id": int(sent_message_id)}
+                    ) as delete_response:
+                        delete_result = await delete_response.json(content_type=None)
+                if not delete_result.get("ok"):
+                    log.warning("Не удалось удалить отчёт посещаемости %s для %s: %s",
+                                sent_message_id, uid, delete_result.get("description"))
+            except Exception:
+                log.exception("Ошибка автоматического удаления отчёта %s для %s", sent_message_id, uid)
+
+        asyncio.create_task(delete_report_later())
 
     return web.json_response({"sent": True, "date": report_day.isoformat(), "sessions_count": len(sessions)})
 
