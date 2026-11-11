@@ -166,13 +166,11 @@ async function renderJournal(){
  const root=$('#journalContent'),seq=++journalRenderSeq;root.replaceChildren(el('div','skeleton'));
  try{
   const controls=el('div','journal-filters');
-  const subjectWrap=el('label','journal-filter','Предмет'),subject=el('select','journal-select');subject.append(new Option('Выбери предмет',''));subjectWrap.append(subject);
-  const dateWrap=el('label','journal-filter','Дата занятия'),dateSelect=el('select','journal-select');dateSelect.append(new Option('Сначала выбери предмет',''));dateWrap.append(dateSelect);
-  controls.append(subjectWrap,dateWrap);root.replaceChildren(controls);
+  const subjectWrap=el('label','journal-filter','Предмет'),subject=el('select','journal-select');subject.append(new Option('Выбери предмет',''));subjectWrap.append(subject);controls.append(subjectWrap);root.replaceChildren(controls);
   let data=null;
   const normalizeJournalSubject=value=>{
    const raw=String(value||'').trim(),key=raw.toLocaleLowerCase('ru-RU').replace(/ё/g,'е');
-   if(/\bвпр\b/i.test(raw)||key.includes('впр'))return '';
+   if(/\\bвпр\\b/i.test(raw)||key.includes('впр'))return '';
    if(key.includes('иностранный язык')||key.includes('иностарнный язык'))return 'Иностранный язык';
    if(key.includes('технологии физического уровня'))return 'Технологии физического уровня';
    return raw;
@@ -180,50 +178,55 @@ async function renderJournal(){
   const load=async()=>{
    data=await api('/api/journal/history');
    if(seq!==journalRenderSeq)return;
-   const previousSubject=normalizeJournalSubject(subject.value),previousDate=dateSelect.value;
+   const previousSubject=normalizeJournalSubject(subject.value);
    const subjects=[...new Set(data.sessions.map(x=>normalizeJournalSubject(x.subject)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
    subject.replaceChildren(new Option('Выбери предмет',''));
    subjects.forEach(s=>subject.append(new Option(s,s)));
    subject.value=subjects.includes(previousSubject)?previousSubject:(subjects[0]||'');
-   await renderSelected(previousDate);
+   renderSelected();
   };
-  const renderSelected=async preferredDate=>{
+  const renderSelected=()=>{
    const old=root.querySelector('.journal-history-content');if(old)old.remove();
-   dateSelect.replaceChildren(new Option(subject.value?'Выбери дату':'Сначала выбери предмет',''));
    if(!subject.value)return;
    const matching=data.sessions.filter(x=>normalizeJournalSubject(x.subject)===subject.value).sort((a,b)=>a.lesson_date.localeCompare(b.lesson_date)||Number(a.lesson_number)-Number(b.lesson_number));
-   const counts=new Map();matching.forEach(x=>counts.set(x.lesson_date,(counts.get(x.lesson_date)||0)+1));
-   matching.forEach(x=>{const count=matching.filter(y=>y.lesson_date===x.lesson_date).findIndex(y=>y.lesson_number===x.lesson_number)+1;const label=x.lesson_date.split('-').reverse().join('.')+(counts.get(x.lesson_date)>1?' · занятие '+count:'');dateSelect.append(new Option(label,x.lesson_date+'|'+x.lesson_number))});
-   const chosen=matching.some(x=>x.lesson_date+'|'+x.lesson_number===preferredDate)?preferredDate:(matching.length?matching[matching.length-1].lesson_date+'|'+matching[matching.length-1].lesson_number:'');
-   dateSelect.value=chosen;
-   const session=matching.find(x=>x.lesson_date+'|'+x.lesson_number===chosen);
    const content=el('div','journal-history-content');
-   if(!session){const box=el('div','empty');box.append(el('div','emoji','📚'),el('h3','','Занятий пока нет'),el('p','','В сохранённой истории нет занятий по этому предмету.'));content.append(box);root.append(content);return}
-   const title=el('div','section-head');title.append(el('h2','','Посещаемость'),el('span','tag',session.lesson_date.split('-').reverse().join('.')));content.append(title);
+   if(!matching.length){const box=el('div','empty');box.append(el('div','emoji','📚'),el('h3','','Занятий пока нет'),el('p','','В сохранённой истории нет занятий по этому предмету.'));content.append(box);root.append(content);return}
+   const title=el('div','section-head');title.append(el('h2','','Посещаемость'),el('span','tag',matching.length+' пар'));content.append(title);
    const absent=new Set(data.absences.map(x=>x.lesson_date+'|'+x.lesson_number+'|'+x.student_id));
-   const changed=new Map(),wrap=el('div','journal-table-wrap'),table=el('table','journal-matrix'),thead=el('thead'),hr=el('tr');hr.append(el('th','journal-name-head','Студент'),el('th','journal-session-head','Статус'));thead.append(hr);table.append(thead);
+   const changed=new Map(),wrap=el('div','journal-table-wrap'),table=el('table','journal-matrix'),thead=el('thead'),hr=el('tr');hr.append(el('th','journal-name-head','Студент'));
+   matching.forEach(session=>{
+    const th=el('th','journal-session-head'),date=el('b','',session.lesson_date.split('-').reverse().join('.')),pair=el('small','',String(session.lesson_number)+'-я пара');th.append(date,pair);hr.append(th);
+   });
+   thead.append(hr);table.append(thead);
    const tbody=el('tbody');
    data.students.forEach(student=>{
-    const tr=el('tr'),name=el('th','journal-student-name',student.full_name),td=el('td','journal-mark-cell');
-    const key=session.lesson_date+'|'+session.lesson_number+'|'+student.telegram_id,button=el('button','journal-mark'),isAbsent=absent.has(key);
-    button.textContent=isAbsent?'Н':'Был';button.classList.toggle('absent',isAbsent);button.disabled=!data.can_edit;button.title=isAbsent?'Отсутствовал':'Присутствовал';
-    button.onclick=()=>{const next=!absent.has(key);if(next)absent.add(key);else absent.delete(key);changed.set(key,next);button.textContent=next?'Н':'Был';button.classList.toggle('absent',next);button.title=next?'Отсутствовал':'Присутствовал';save.disabled=changed.size===0;save.classList.toggle('is-idle',changed.size===0)};
-    td.append(button);tr.append(name,td);tbody.append(tr);
+    const tr=el('tr'),name=el('th','journal-student-name',student.full_name);tr.append(name);
+    matching.forEach(session=>{
+     const td=el('td','journal-mark-cell'),key=session.lesson_date+'|'+session.lesson_number+'|'+student.telegram_id,button=el('button','journal-mark'),isAbsent=absent.has(key);
+     button.textContent=isAbsent?'Н':'Был';button.classList.toggle('absent',isAbsent);button.disabled=!data.can_edit;button.title=isAbsent?'Отсутствовал':'Присутствовал';
+     button.onclick=()=>{const next=!absent.has(key);if(next)absent.add(key);else absent.delete(key);changed.set(key,{session,studentId:Number(student.telegram_id),absent:next});button.textContent=next?'Н':'Был';button.classList.toggle('absent',next);button.title=next?'Отсутствовал':'Присутствовал';save.disabled=changed.size===0;save.classList.toggle('is-idle',changed.size===0)};
+     td.append(button);tr.append(td);
+    });
+    tbody.append(tr);
    });
    table.append(tbody);wrap.append(table);content.append(wrap);
-   content.append(el('p','notice','Н — отсутствовал · Был — присутствовал. История хранится в приложении и не загружается заново с сайта техникума при каждом открытии.'));
+   content.append(el('p','notice','Н — отсутствовал · Был — присутствовал. Каждый столбец — отдельная пара этого предмета; если в один день их несколько, они отображаются отдельно.'));
    if(data.can_edit){
     const save=el('button','journal-save','Сохранить изменения');save.disabled=true;save.classList.add('is-idle');
     save.onclick=async()=>{save.disabled=true;save.textContent='Сохранение…';try{
-     const absentIds=data.students.filter(s=>absent.has(session.lesson_date+'|'+session.lesson_number+'|'+s.telegram_id)).map(s=>Number(s.telegram_id));
-     await api('/api/journal',{method:'POST',body:JSON.stringify({date:session.lesson_date,lesson_number:String(session.lesson_number),absent_ids:absentIds})});
+     const grouped=new Map();for(const item of changed.values()){const k=item.session.lesson_date+'|'+item.session.lesson_number;if(!grouped.has(k))grouped.set(k,{session:item.session,absentIds:new Set()});if(item.absent)grouped.get(k).absentIds.add(item.studentId)}
+     for(const {session,absentIds} of grouped.values()){
+      const sessionKey=session.lesson_date+'|'+session.lesson_number;
+      const absentIdsFinal=data.students.filter(s=>absent.has(sessionKey+'|'+s.telegram_id)).map(s=>Number(s.telegram_id));
+      await api('/api/journal',{method:'POST',body:JSON.stringify({date:session.lesson_date,lesson_number:String(session.lesson_number),absent_ids:absentIdsFinal})});
+     }
      toast('Посещаемость сохранена');await load();
     }catch(e){toast(e.message||'Не удалось сохранить');save.textContent='Повторить сохранение';save.disabled=false}};
     content.append(save);
    }else content.append(el('div','journal-readonly','Режим просмотра. Изменять отметки могут только староста и зам. старосты.'));
    root.append(content);
   };
-  subject.onchange=()=>renderSelected('');dateSelect.onchange=()=>renderSelected(dateSelect.value);
+  subject.onchange=renderSelected;
   await load();
  }catch(e){if(seq===journalRenderSeq)root.replaceChildren(errorBox(e.message))}
 }
