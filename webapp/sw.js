@@ -1,4 +1,4 @@
-const CACHE_NAME = "vasya-bot-shell-v1";
+const CACHE_NAME = "vasya-bot-shell-v2";
 const SHELL_URLS = ["/", "/manifest.webmanifest", "/icon.svg", "/apple-touch-icon.png"];
 
 self.addEventListener("install", event => {
@@ -51,4 +51,34 @@ self.addEventListener("fetch", event => {
       return fetch(request);
     })());
   }
+});
+
+self.addEventListener("push", event => {
+  let payload = {};
+  try { payload = event.data ? event.data.json() : {}; }
+  catch { payload = { body: event.data ? event.data.text() : "" }; }
+  event.waitUntil(self.registration.showNotification(payload.title || "Вася Бот", {
+    body: payload.body || "Напоминание о занятии",
+    icon: "/apple-touch-icon.png",
+    badge: "/icon.svg",
+    tag: payload.tag || "vasya-bot-notification",
+    data: { url: payload.url || "/" },
+    renotify: false,
+    requireInteraction: true
+  }));
+});
+self.addEventListener("notificationclick", event => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/", self.location.origin).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    for (const client of windows) {
+      if ("focus" in client) {
+        await client.focus();
+        if ("navigate" in client) await client.navigate(target);
+        return;
+      }
+    }
+    if (self.clients.openWindow) await self.clients.openWindow(target);
+  })());
 });
