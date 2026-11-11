@@ -149,6 +149,38 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}button
 .tg-profile-editor-save{width:100%;padding:13px 15px;border-radius:13px;background:var(--accent);color:#fff;font-weight:800;margin-top:7px}
 @media(min-width:600px){.tg-profile-editor-backdrop{align-items:center}.tg-profile-editor{border-radius:18px}}
 
+
+/* Liquid Glass — deeper translucency, layered reflections and motion */
+:root[data-theme="liquid"]{color-scheme:dark;--bg:#080d19;--panel:rgba(226,236,255,.075);--panel2:rgba(226,236,255,.12);--text:#f7f9ff;--muted:#aebbd2;--accent:#b7d2ff;--line:rgba(225,237,255,.19);--shadow:0 18px 48px rgba(0,0,0,.32)}
+:root[data-theme="liquid"] html{background:#080d19}
+:root[data-theme="liquid"] body{isolation:isolate;background:transparent}
+:root[data-theme="liquid"] body:before{content:"";position:fixed;z-index:-1;inset:-22%;pointer-events:none;background:radial-gradient(ellipse at 16% 20%,rgba(69,128,255,.34),transparent 32%),radial-gradient(ellipse at 82% 28%,rgba(177,106,255,.27),transparent 30%),radial-gradient(ellipse at 55% 88%,rgba(41,196,220,.16),transparent 34%),linear-gradient(145deg,#101a31,#080d19 58%,#11152b);background-size:150% 150%;animation:liquidBackdrop 22s ease-in-out infinite alternate}
+@keyframes liquidBackdrop{0%{background-position:0% 0%;transform:scale(1)}50%{background-position:100% 35%;transform:scale(1.035)}100%{background-position:35% 100%;transform:scale(1.015)}}
+:root[data-theme="liquid"] .card,:root[data-theme="liquid"] .lesson-card,:root[data-theme="liquid"] .status,:root[data-theme="liquid"] .empty,:root[data-theme="liquid"] .errorbox,:root[data-theme="liquid"] .student-profile-info,:root[data-theme="liquid"] .student-profile-sheet,:root[data-theme="liquid"] .weekday,:root[data-theme="liquid"] .seg,:root[data-theme="liquid"] .iconbtn,:root[data-theme="liquid"] .arrow,:root[data-theme="liquid"] .students-sort-btn,:root[data-theme="liquid"] .user-card{background:linear-gradient(145deg,rgba(255,255,255,.135),rgba(255,255,255,.035) 58%),rgba(19,31,54,.34)!important;border:1px solid rgba(231,241,255,.2)!important;box-shadow:0 12px 34px rgba(0,0,0,.2),inset 0 1px 0 rgba(255,255,255,.22),inset 0 -1px 0 rgba(255,255,255,.045)!important;backdrop-filter:blur(32px) saturate(185%);-webkit-backdrop-filter:blur(32px) saturate(185%);transition:background .35s ease,border-color .35s ease,box-shadow .35s ease,transform .28s cubic-bezier(.2,.8,.2,1)}
+:root[data-theme="liquid"] .card,:root[data-theme="liquid"] .lesson-card,:root[data-theme="liquid"] .status{position:relative;overflow:hidden}
+:root[data-theme="liquid"] .card:before,:root[data-theme="liquid"] .lesson-card:before,:root[data-theme="liquid"] .status:before{content:"";position:absolute;inset:0 0 auto;height:42%;pointer-events:none;background:linear-gradient(180deg,rgba(255,255,255,.105),transparent);opacity:.75}
+:root[data-theme="liquid"] .hero{background:linear-gradient(125deg,rgba(111,158,255,.34),rgba(166,116,255,.2) 52%,rgba(255,255,255,.07)),rgba(18,29,52,.38)!important;border:1px solid rgba(237,245,255,.27);box-shadow:0 20px 48px rgba(38,76,150,.22),inset 0 1px 0 rgba(255,255,255,.28);backdrop-filter:blur(30px) saturate(185%);-webkit-backdrop-filter:blur(30px) saturate(185%)}
+:root[data-theme="liquid"] .bottom{left:12px;right:12px;bottom:calc(9px + env(safe-area-inset-bottom));padding:8px 10px;background:linear-gradient(145deg,rgba(255,255,255,.19),rgba(255,255,255,.065) 48%,rgba(255,255,255,.105)),rgba(18,27,46,.52)!important;border:1px solid rgba(239,246,255,.27)!important;border-radius:27px;box-shadow:0 16px 45px rgba(0,0,0,.34),inset 0 1px 0 rgba(255,255,255,.3),inset 0 -1px 0 rgba(255,255,255,.08);backdrop-filter:blur(38px) saturate(210%);-webkit-backdrop-filter:blur(38px) saturate(210%);overflow:hidden}
+:root[data-theme="liquid"] .bottom:before{content:"";position:absolute;inset:0;pointer-events:none;border-radius:inherit;background:linear-gradient(110deg,transparent 10%,rgba(255,255,255,.09) 45%,transparent 72%);transform:translateX(-110%);animation:glassSweep 9s ease-in-out infinite}
+@keyframes glassSweep{0%,62%{transform:translateX(-110%)}85%,100%{transform:translateX(110%)}}
+:root[data-theme="liquid"] .bottom-inner{position:relative;z-index:1;gap:5px}
+:root[data-theme="liquid"] .tab{position:relative;z-index:0;min-height:49px;justify-content:center;padding:6px 2px;color:rgba(231,239,255,.68);border-radius:18px;transition:color .25s ease,transform .25s cubic-bezier(.2,.8,.2,1),background .25s ease}
+:root[data-theme="liquid"] .tab.active{color:#fff;background:linear-gradient(145deg,rgba(255,255,255,.23),rgba(255,255,255,.075));box-shadow:inset 0 1px 0 rgba(255,255,255,.27),0 5px 18px rgba(0,0,0,.13)}
+:root[data-theme="liquid"] .tab.active .ico{filter:drop-shadow(0 0 8px rgba(174,207,255,.8));animation:tabPop .38s cubic-bezier(.2,1.4,.4,1)}
+@keyframes tabPop{0%{transform:scale(.78) translateY(2px)}65%{transform:scale(1.13) translateY(-1px)}100%{transform:scale(1)}}
+:root[data-theme="liquid"] .tab:active,:root[data-theme="liquid"] .primary:active,:root[data-theme="liquid"] .iconbtn:active{transform:scale(.94)}
+:root[data-theme="liquid"] .seg{padding:5px;border-radius:17px}
+:root[data-theme="liquid"] .seg button[aria-selected=true]{background:linear-gradient(145deg,rgba(255,255,255,.23),rgba(255,255,255,.09));box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 3px 12px rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.13)}
+:root[data-theme="liquid"] .primary,:root[data-theme="liquid"] .student-profile-action.primary{background:linear-gradient(135deg,#d5e5ff,#a9bfff 55%,#c9baff)!important;color:#14213a;border:1px solid rgba(255,255,255,.52);box-shadow:0 7px 22px rgba(124,159,255,.24),inset 0 1px 0 rgba(255,255,255,.7);transition:transform .2s ease,filter .2s ease}
+:root[data-theme="liquid"] .day.sel{background:linear-gradient(135deg,#b9d6ff,#b9aaff);color:#111d35;box-shadow:0 5px 18px rgba(145,174,255,.3),inset 0 1px 0 rgba(255,255,255,.65)}
+:root[data-theme="liquid"] .day.sel .wd{color:#263653}
+:root[data-theme="liquid"] .toast{background:rgba(25,38,62,.78);border:1px solid rgba(255,255,255,.2);box-shadow:0 12px 36px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.15);backdrop-filter:blur(30px) saturate(180%);-webkit-backdrop-filter:blur(30px) saturate(180%)}
+:root[data-theme="liquid"] .tag,:root[data-theme="liquid"] .up-time,:root[data-theme="liquid"] .hero-chip{background:rgba(255,255,255,.13);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
+:root[data-theme="liquid"] .logo{box-shadow:0 8px 24px rgba(116,151,255,.24),inset 0 1px 0 rgba(255,255,255,.55)}
+:root[data-theme="liquid"] .page.active{animation:liquidPageIn .42s cubic-bezier(.2,.8,.2,1)}
+@keyframes liquidPageIn{from{opacity:0;transform:translateY(9px) scale(.992);filter:blur(4px)}to{opacity:1;transform:none;filter:blur(0)}}
+@media(prefers-reduced-motion:reduce){:root[data-theme="liquid"] body:before,:root[data-theme="liquid"] .bottom:before,:root[data-theme="liquid"] .tab.active .ico{animation:none!important}:root[data-theme="liquid"] *{transition:none!important}}
+
 </style>
 </head>
 <body>
