@@ -1356,7 +1356,7 @@ async def api_journal_bulk_save(request: web.Request) -> web.Response:
 async def api_push_config(request: web.Request) -> web.Response:
     public_key = os.getenv("WEBPUSH_VAPID_PUBLIC_KEY", "").strip()
     if not public_key:
-        return web.json_response({"enabled": False, "public_key": ""}, status=503)
+        return web.json_response({"enabled": False, "public_key": "", "message": "Push-уведомления ещё не настроены на сервере"}, status=503)
     return web.json_response({"enabled": True, "public_key": public_key})
 
 
