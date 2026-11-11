@@ -260,6 +260,14 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         updated_at TEXT NOT NULL,
         PRIMARY KEY (lesson_date, lesson_number)
     )""")
+    db.execute("""CREATE TABLE IF NOT EXISTS journal_sync_days (
+        lesson_date TEXT PRIMARY KEY,
+        synced_at TEXT NOT NULL
+    )""")
+    db.execute("""CREATE TABLE IF NOT EXISTS journal_sync_state (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        last_sync_day TEXT NOT NULL
+    )""")
     # Restore session headers for absence records saved before the history view.
     db.execute("""INSERT OR IGNORE INTO journal_sessions
         (lesson_date, lesson_number, subject, marked_by, updated_at)
@@ -767,65 +775,89 @@ async def api_journal_get(request: web.Request) -> web.Response:
     })
 
 
+async def _sync_journal_schedule(d: Deps) -> None:
+    """Синхронизирует расписание с БД не чаще раза в день; пропущенные даты остаются на повтор."""
+    today = datetime.now(d.tz).date()
+    academic_start = date(today.year if today.month >= 9 else today.year - 1, 9, 1)
+    horizon = today + timedelta(days=30)
+    async with d.users_lock:
+        def pending_days():
+            db = _db_connect(d)
+            try:
+                row = db.execute("SELECT last_sync_day FROM journal_sync_state WHERE id=1").fetchone()
+                if row and row["last_sync_day"] == today.isoformat():
+                    return None
+                scanned = {r["lesson_date"] for r in db.execute(
+                    "SELECT lesson_date FROM journal_sync_days WHERE lesson_date BETWEEN ? AND ?",
+                    (academic_start.isoformat(), horizon.isoformat())
+                ).fetchall()}
+                refresh = {(today - timedelta(days=1)).isoformat(), today.isoformat()}
+                return [academic_start + timedelta(days=i)
+                        for i in range((horizon - academic_start).days + 1)
+                        if (academic_start + timedelta(days=i)).isoformat() not in scanned
+                        or (academic_start + timedelta(days=i)).isoformat() in refresh]
+            finally:
+                db.close()
+        days = await asyncio.to_thread(pending_days)
+        if days is None:
+            return
+        semaphore = asyncio.Semaphore(6)
+        async def fetch(day: date):
+            async with semaphore:
+                try:
+                    lessons = _day_json(d, day, await d.get_lessons(day), False)["lessons"]
+                    return day, lessons, True
+                except Exception as exc:
+                    log.warning("Синхронизация журнала %s: %s", day, exc)
+                    return day, [], False
+        results = await asyncio.gather(*(fetch(day) for day in days))
+        def persist():
+            db = _db_connect(d)
+            try:
+                now_text = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                for day, lessons, ok in results:
+                    if not ok:
+                        continue
+                    for lesson in lessons:
+                        db.execute(
+                            "INSERT INTO journal_sessions (lesson_date, lesson_number, subject, marked_by, updated_at) VALUES (?, ?, ?, 0, ?) "
+                            "ON CONFLICT(lesson_date, lesson_number) DO UPDATE SET subject=excluded.subject",
+                            (day.isoformat(), str(lesson["number"]), str(lesson["subject"]), now_text)
+                        )
+                    db.execute("INSERT OR IGNORE INTO journal_sync_days (lesson_date, synced_at) VALUES (?, ?)",
+                               (day.isoformat(), now_text))
+                db.execute("INSERT INTO journal_sync_state (id, last_sync_day) VALUES (1, ?) "
+                           "ON CONFLICT(id) DO UPDATE SET last_sync_day=excluded.last_sync_day",
+                           (today.isoformat(),))
+                db.commit()
+            finally:
+                db.close()
+        await asyncio.to_thread(persist)
+        log.info("Журнал синхронизирован: %d дат обработано, %d успешно", len(results), sum(1 for x in results if x[2]))
+
+
 async def api_journal_history(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     uid = int((request.get("user") or {}).get("id", 0))
-    today = datetime.now(d.tz).date()
-    try:
-        end_day = date.fromisoformat(request.query.get("to", today.isoformat()))
-        start_day = date.fromisoformat(request.query.get("from", (today - timedelta(days=29)).isoformat()))
-    except ValueError:
-        raise web.HTTPBadRequest(text="Некорректный период")
-    if start_day > end_day or (end_day - start_day).days > 61:
-        raise web.HTTPBadRequest(text="Период должен быть не длиннее 62 дней")
-
-    # Discover actual lesson dates from the timetable, not just dates already marked.
-    days = [start_day + timedelta(days=i) for i in range((end_day - start_day).days + 1)]
-    semaphore = asyncio.Semaphore(4)
-
-    async def scheduled_sessions(day: date) -> list[dict]:
-        async with semaphore:
-            try:
-                lessons = _day_json(d, day, await d.get_lessons(day), False)["lessons"]
-                return [{"lesson_date": day.isoformat(),
-                         "lesson_number": str(item.get("number", "")).strip(),
-                         "subject": str(item.get("subject", "")).strip()}
-                        for item in lessons
-                        if str(item.get("number", "")).strip() and str(item.get("subject", "")).strip()]
-            except Exception as exc:
-                log.debug("Не удалось получить занятия для журнала на %s: %s", day, exc)
-                return []
-
-    discovered = [item for group in await asyncio.gather(*(scheduled_sessions(day) for day in days)) for item in group]
+    await _sync_journal_schedule(d)
     async with d.users_lock:
         def read():
             db = _db_connect(d)
             try:
-                now_text = datetime.now(timezone.utc).isoformat(timespec="seconds")
-                for session in discovered:
-                    db.execute(
-                        "INSERT INTO journal_sessions (lesson_date, lesson_number, subject, marked_by, updated_at) VALUES (?, ?, ?, 0, ?) "
-                        "ON CONFLICT(lesson_date, lesson_number) DO UPDATE SET subject=CASE WHEN journal_sessions.subject='' THEN excluded.subject ELSE journal_sessions.subject END",
-                        (session["lesson_date"], session["lesson_number"], session["subject"], now_text)
-                    )
-                db.commit()
                 students = [dict(row) for row in db.execute(
                     "SELECT telegram_id, full_name FROM registered_users ORDER BY full_name COLLATE NOCASE"
                 ).fetchall()]
                 sessions = [dict(row) for row in db.execute(
-                    "SELECT lesson_date, lesson_number, subject FROM journal_sessions WHERE lesson_date BETWEEN ? AND ? AND subject<>'' ORDER BY subject COLLATE NOCASE, lesson_date, CAST(lesson_number AS INTEGER)",
-                    (start_day.isoformat(), end_day.isoformat())
+                    "SELECT lesson_date, lesson_number, subject FROM journal_sessions WHERE subject<>'' ORDER BY subject COLLATE NOCASE, lesson_date, CAST(lesson_number AS INTEGER)"
                 ).fetchall()]
                 absences = [dict(row) for row in db.execute(
-                    "SELECT lesson_date, lesson_number, student_id FROM journal_absences WHERE lesson_date BETWEEN ? AND ?",
-                    (start_day.isoformat(), end_day.isoformat())
+                    "SELECT lesson_date, lesson_number, student_id FROM journal_absences"
                 ).fetchall()]
                 return students, sessions, absences
             finally:
                 db.close()
         students, sessions, absences = await asyncio.to_thread(read)
-    return web.json_response({"from": start_day.isoformat(), "to": end_day.isoformat(),
-        "students": students, "sessions": sessions, "absences": absences,
+    return web.json_response({"students": students, "sessions": sessions, "absences": absences,
         "can_edit": _journal_can_edit(d, uid)})
 
 
@@ -844,9 +876,6 @@ async def api_journal_save(request: web.Request) -> web.Response:
         day = date.fromisoformat(body["date"])
     except (TypeError, ValueError):
         raise web.HTTPBadRequest(text="Некорректная дата")
-    today = datetime.now(d.tz).date()
-    if abs((day - today).days) > MAX_SHIFT_DAYS:
-        raise web.HTTPBadRequest(text="Дата вне допустимого диапазона")
     lesson_number = str(body["lesson_number"]).strip()
     if not lesson_number or len(lesson_number) > 12:
         raise web.HTTPBadRequest(text="Некорректный номер пары")
@@ -855,16 +884,16 @@ async def api_journal_save(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="Некорректный список отсутствующих")
     if any(type(value) is not int or value <= 0 for value in absent_ids) or len(absent_ids) != len(set(absent_ids)):
         raise web.HTTPBadRequest(text="Некорректный список студентов")
-    try:
-        lessons = _day_json(d, day, await d.get_lessons(day), False)["lessons"]
-    except Exception:
-        raise web.HTTPBadRequest(text="Не удалось проверить расписание на выбранную дату")
-    if not any(str(lesson.get("number")) == lesson_number for lesson in lessons):
-        raise web.HTTPBadRequest(text="Такой пары нет в расписании на выбранную дату")
     async with d.users_lock:
         def save():
             db = _db_connect(d)
             try:
+                session_exists = db.execute(
+                    "SELECT 1 FROM journal_sessions WHERE lesson_date=? AND lesson_number=? AND subject<>''",
+                    (day.isoformat(), lesson_number)
+                ).fetchone()
+                if not session_exists:
+                    raise ValueError("Занятие не найдено в сохранённой истории расписания")
                 if absent_ids:
                     placeholders = ",".join("?" for _ in absent_ids)
                     known = {int(row["telegram_id"]) for row in db.execute(
@@ -874,10 +903,9 @@ async def api_journal_save(request: web.Request) -> web.Response:
                     if known != set(absent_ids):
                         raise ValueError("В списке есть неизвестные студенты")
                 now = datetime.now(timezone.utc).isoformat(timespec="seconds")
-                subject = next((str(lesson.get("subject", "")) for lesson in lessons if str(lesson.get("number")) == lesson_number), "")
                 db.execute(
-                    "INSERT INTO journal_sessions (lesson_date, lesson_number, subject, marked_by, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(lesson_date, lesson_number) DO UPDATE SET subject=excluded.subject, marked_by=excluded.marked_by, updated_at=excluded.updated_at",
-                    (day.isoformat(), lesson_number, subject, uid, now)
+                    "UPDATE journal_sessions SET marked_by=?, updated_at=? WHERE lesson_date=? AND lesson_number=?",
+                    (uid, now, day.isoformat(), lesson_number)
                 )
                 db.execute(
                     "DELETE FROM journal_absences WHERE lesson_date = ? AND lesson_number = ?",
