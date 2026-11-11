@@ -10,10 +10,11 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from aiogram import Bot, Dispatcher, F
+from aiogram import BaseMiddleware, Bot, Dispatcher, F
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.exceptions import TelegramAPIError
+from aiogram.methods import SendMessage
 from aiogram.filters import Command, CommandObject
 from aiogram.types import (BotCommand, BufferedInputFile, CallbackQuery, InlineKeyboardButton,
                            InlineKeyboardMarkup, MenuButtonWebApp, Message, WebAppInfo)
@@ -145,6 +146,56 @@ async def send_long(chat_id: int, text: str, markup: InlineKeyboardMarkup | None
 
 def render_day(day: date, lessons: list[dict], weekday: bool = False) -> str:
     return format_day(GROUP_NAME, day, lessons, times=bells.day_ranges(day), today=now().date())
+
+
+class PrivateIncomingCleanup(BaseMiddleware):
+    """Удаляет сообщения пользователя в личке после обработки; группы не затрагивает."""
+
+    async def __call__(self, handler, event, data):
+        try:
+            return await handler(event, data)
+        finally:
+            if isinstance(event, Message) and event.chat.type == "private" and event.from_user:
+                try:
+                    await event.delete()
+                except TelegramAPIError as e:
+                    log.debug("Не удалось удалить входящее сообщение в личке: %s", e)
+
+
+async def cleanup_private_outgoing(make_request, session_bot, method):
+    """В личке сохраняет только первое приветствие /start, остальные ответы бота удаляет."""
+    result = await make_request(session_bot, method)
+    chat_id = getattr(method, "chat_id", None)
+
+    # Личные Telegram chat_id — положительные числовые значения; группы/каналы не трогаем.
+    try:
+        private_chat_id = int(chat_id)
+    except (TypeError, ValueError):
+        return result
+    if private_chat_id <= 0:
+        return result
+
+    messages = result if isinstance(result, list) else [result]
+    for sent in messages:
+        if not isinstance(sent, Message):
+            continue
+        first_messages = state.data.setdefault("private_first_messages", {})
+        chat_key = str(private_chat_id)
+
+        if (isinstance(method, SendMessage)
+                and method.text == HELP
+                and chat_key not in first_messages):
+            first_messages[chat_key] = sent.message_id
+            state.save()
+            continue
+
+        if first_messages.get(chat_key) == sent.message_id:
+            continue
+        try:
+            await session_bot.delete_message(private_chat_id, sent.message_id)
+        except TelegramAPIError as e:
+            log.debug("Не удалось удалить исходящее сообщение в личке: %s", e)
+    return result
 
 
 def is_admin(m: Message) -> bool:
@@ -469,6 +520,9 @@ async def main() -> None:
         sys.exit(1)
 
     bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    # Очистка включена только для личных чатов. В группах поведение бота прежнее.
+    dp.message.outer_middleware(PrivateIncomingCleanup())
+    bot.session.middleware(cleanup_private_outgoing)
     await bot.set_my_commands([
         BotCommand(command="today", description="Расписание на сегодня"),
         BotCommand(command="tomorrow", description="Расписание на завтра"),
