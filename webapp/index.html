@@ -484,6 +484,9 @@ body{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
 
 /* Invite students bottom sheet */
 .invite-overlay{z-index:90}.invite-overlay .settings-sheet{padding:12px 24px calc(24px + env(safe-area-inset-bottom));border-radius:25px 25px 0 0}.invite-overlay .settings-sheet-handle{width:50px;height:4px;background:#777b86;opacity:.32;margin:5px auto 24px}.invite-overlay .settings-sheet-top{margin-bottom:18px}.invite-overlay .settings-sheet-top h3{font-size:20px;font-weight:800}.invite-content{padding-bottom:4px}.invite-content .settings-sheet-code{font-size:38px;letter-spacing:4px;line-height:1.2;margin:16px 0 8px;color:#a78bfa;overflow-wrap:anywhere}.invite-content .settings-sheet-code.invite-code-active{letter-spacing:3px}.invite-content p{font-size:13px;line-height:1.55;color:var(--muted);margin:0 0 16px}.invite-content .primary{width:100%;min-height:54px;border-radius:16px;font-size:15px;margin:0 0 12px;background:linear-gradient(110deg,#8064ff,#594bd7);box-shadow:0 8px 22px rgba(104,80,230,.22)}.invite-content .primary:disabled{opacity:.45;box-shadow:none}.invite-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px}.invite-secondary,.invite-danger,.invite-copy-code{min-height:54px;border-radius:16px;border:1px solid var(--line);background:var(--panel);font-size:14px;font-weight:750}.invite-secondary{color:var(--muted)}.invite-danger{border-color:rgba(240,80,90,.48);background:rgba(240,80,90,.09);color:#ff626d}.invite-secondary:disabled{opacity:.4}.invite-copy-code{width:100%;margin-top:12px;color:var(--text)}.invite-copy-code[hidden]{display:none}.invite-content .invite-hint{font-size:11px;margin:12px 2px 0;color:var(--muted)}
+
+/* Invite sheet: only copy-code and regenerate actions */
+.invite-content .invite-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}.invite-content .invite-secondary,.invite-content .invite-danger{min-height:54px;border-radius:16px;font-size:14px;font-weight:750}.invite-content .invite-secondary{border:1px solid var(--line);background:var(--panel);color:var(--text)}.invite-content .invite-secondary:disabled{opacity:.4}.invite-content .invite-danger{border:1px solid rgba(240,80,90,.48);background:rgba(240,80,90,.09);color:#ff626d}
 </style>
 </head>
 <body>
@@ -861,29 +864,31 @@ function renderSettings(){
  updateFloatingSchedule();
 }
 function openInviteSheet(){
- const wrap=el('div','invite-content'),code=el('div','settings-sheet-code','КОД НЕ СОЗДАН'),hint=el('p','','Создайте код приглашения. Он понадобится новым студентам для первого входа. Уже зарегистрированные пользователи сохранят доступ.'),url='https://t.me/vasya_sa_bot?startapp=invite';
- const invite=el('button','primary','▢  Скопировать приглашение');invite.type='button';invite.disabled=true;
- const row=el('div','invite-actions'),only=el('button','invite-secondary','Только код'),renew=el('button','invite-danger','Перевыпустить');only.type=renew.type='button';only.disabled=true;
- const copyCode=el('button','invite-copy-code','▢  Скопировать код');copyCode.type='button';copyCode.hidden=true;
- const status=el('p','invite-hint','Нажмите «Перевыпустить», чтобы создать новый случайный код для авторизации.');
+ const wrap=el('div','invite-content'),code=el('div','settings-sheet-code','КОД НЕ СОЗДАН'),hint=el('p','','Перевыпустите код, чтобы новые студенты могли авторизоваться. Уже зарегистрированные пользователи сохранят доступ.');
+ const row=el('div','invite-actions'),copyCode=el('button','invite-secondary','Скопировать код'),renew=el('button','invite-danger','Перевыпустить');
+ copyCode.type=renew.type='button';copyCode.disabled=true;
  let activeCode='';
- async function copyText(value,success){try{if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(value);else{const input=el('textarea');input.value=value;input.style.position='fixed';input.style.opacity='0';document.body.append(input);input.select();const ok=document.execCommand('copy');input.remove();if(!ok)throw Error('copy failed')}toast(success)}catch{toast('Не удалось скопировать. Выделите текст и скопируйте вручную')}}
- invite.onclick=()=>copyText('Присоединяйся к Mini App нашей группы: '+url+'\\nКод для входа: '+activeCode,'Приглашение скопировано');
- only.onclick=()=>copyText(activeCode,'Код скопирован');
- copyCode.onclick=()=>copyText(activeCode,'Код скопирован');
+ copyCode.onclick=async()=>{
+   if(!activeCode)return;
+   try{
+     if(navigator.clipboard?.writeText)await navigator.clipboard.writeText(activeCode);
+     else{const input=el('textarea');input.value=activeCode;input.style.position='fixed';input.style.opacity='0';document.body.append(input);input.select();const ok=document.execCommand('copy');input.remove();if(!ok)throw Error('copy failed')}
+     toast('Код скопирован');
+   }catch{toast('Не удалось скопировать код')}
+ };
  renew.onclick=async()=>{
    if(!state.me?.is_admin){toast('Перевыпустить код может только администратор');return}
    renew.disabled=true;renew.textContent='Создаём…';
    try{
      const result=await api('/api/admin/access-code',{method:'POST',body:JSON.stringify({generate:true,preserve_existing_access:true})});
      activeCode=String(result.code||'');if(!activeCode)throw Error('Сервер не вернул код');
-     code.textContent=activeCode;code.classList.add('invite-code-active');hint.textContent='Передайте код новым студентам. Старый код больше не действует; уже вошедшие пользователи сохраняют доступ.';
-     invite.disabled=only.disabled=false;copyCode.hidden=false;status.textContent='Новый код создан. Его можно скопировать отдельно или вместе со ссылкой на приложение.';
+     code.textContent=activeCode;code.classList.add('invite-code-active');copyCode.disabled=false;
+     hint.textContent='Старый код больше не действует. Новый код можно скопировать кнопкой ниже.';
      toast('Новый код создан');
-   }catch(e){status.textContent=e.message||'Не удалось создать код';toast(status.textContent)}
+   }catch(e){toast(e.message||'Не удалось создать код')}
    finally{renew.disabled=false;renew.textContent='Перевыпустить'}
  };
- row.append(only,renew);wrap.append(code,hint,invite,row,copyCode,status);
+ row.append(copyCode,renew);wrap.append(code,hint,row);
  const overlay=openSettingsSheet('Пригласить студентов',wrap);overlay.classList.add('invite-overlay');
 }
 async function renderAdmin(){const root=$('#adminContent');root.replaceChildren(el('div','skeleton'));try{const [a,list]=await Promise.all([api('/api/admin/overview'),api('/api/admin/users')]);root.replaceChildren();const accessCard=el('div','card');accessCard.append(el('h3','','Код входа'));accessCard.append(el('p','notice','При смене выберите: отключить уже вошедших пользователей или сохранить им доступ.'));const change=el('button','primary','Изменить код доступа');change.onclick=()=>openAccessGate(true);accessCard.append(change);root.append(accessCard);const card=el('div','card');const rows=[['Группа',a.group],['Часовой пояс',a.timezone],['Источник расписания',a.schedule_source],['Зарегистрировано пользователей',list.total],['Пользователей с сохранёнными настройками',a.preferences.users_with_saved_settings],['Время звонков',a.bells_configured?'настроено':'не настроено']];rows.forEach(([k,v])=>{const r=el('div','info-row');r.append(el('span','',k),el('b','',v));card.append(r)});root.append(card);const users=el('div','card');users.append(el('h3','','Зарегистрированные пользователи'));if(!list.users.length)users.append(el('p','notice','Пока никто не заполнил профиль.'));list.users.forEach(u=>{const item=el('div','user-card'),title=el('h3','',u.full_name+(u.banned?' · доступ закрыт':''));item.append(title);const meta=[`Telegram ID: ${u.telegram_id}`,u.username?`@${u.username}`:null,[u.first_name,u.last_name].filter(Boolean).join(' ')||null,u.language_code?`Язык: ${u.language_code}`:null,`Регистрация: ${new Date(u.created_at).toLocaleString('ru-RU')}`].filter(Boolean);item.append(el('div','user-meta',meta.join(' · ')));const actions=el('div','user-actions'),edit=el('button','','Изменить ФИО');edit.onclick=async()=>{const value=prompt('Новое ФИО студента',u.full_name);if(value===null)return;try{await api(`/api/admin/users/${u.telegram_id}`,{method:'PUT',body:JSON.stringify({full_name:value})});toast('ФИО обновлено');renderAdmin()}catch(e){toast(e.message)}};actions.append(edit);if(u.banned){const restore=el('button','','Вернуть доступ');restore.onclick=async()=>{try{await api(`/api/admin/users/${u.telegram_id}/restore`,{method:'POST'});toast('Доступ восстановлен. Студенту нужен код входа.');renderAdmin()}catch(e){toast(e.message)}};actions.append(restore)}else if(Number(u.telegram_id)!==Number(state.me?.user?.id)){const kick=el('button','','Закрыть доступ');kick.onclick=async()=>{if(!confirm(`Закрыть ${u.full_name} доступ к приложению?`))return;try{await api(`/api/admin/users/${u.telegram_id}/kick`,{method:'POST'});toast('Доступ закрыт');renderAdmin()}catch(e){toast(e.message)}};actions.append(kick)}if(Number(u.telegram_id)!==Number(state.me?.user?.id)){const remove=el('button','','Удалить пользователя');remove.style.color='#ff626d';remove.onclick=async()=>{if(!confirm(`Удалить ${u.full_name} из системы без возможности восстановления профиля? Будут удалены регистрация, роль, разрешение на вход и настройки. При наличии кода доступа пользователь сможет зарегистрироваться заново.`))return;remove.disabled=true;try{await api(`/api/admin/users/${u.telegram_id}`,{method:'DELETE'});toast('Пользователь удалён из системы');renderAdmin()}catch(e){toast(e.message);remove.disabled=false}};actions.append(remove)}item.append(actions);users.append(item)});root.append(users);const p=el('div','card');p.append(el('h3','','Сохранённые предпочтения'));Object.entries(a.preferences.enabled).forEach(([k,v])=>{const r=el('div','info-row');r.append(el('span','',({lesson_reminders:'Напоминания о парах',schedule_changes:'Изменения расписания',daily_summary:'Ежедневная сводка'})[k]||k),el('b','',v));p.append(r)});root.append(p,el('p','notice',a.notice));}catch(e){root.replaceChildren(errorBox(e.message))}}
