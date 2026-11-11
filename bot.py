@@ -511,8 +511,11 @@ def _notification_targets(pref_key: str, event_key: str) -> list[int]:
         prefs = json.loads(prefs_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         prefs = {}
+    db = _notification_db()
     try:
-        db = _notification_db()
+        tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        if "registered_users" not in tables:
+            return []
         try:
             rows = db.execute("""SELECT u.telegram_id FROM registered_users u
                 LEFT JOIN access_bans b ON b.telegram_id=u.telegram_id
@@ -533,7 +536,6 @@ def _notification_targets(pref_key: str, event_key: str) -> list[int]:
         return targets
     finally:
         db.close()
-
 
 def _mark_notification_sent(pref_key: str, event_key: str, uid: int) -> None:
     db = _notification_db()
