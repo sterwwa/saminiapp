@@ -246,6 +246,9 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         db.execute("ALTER TABLE registered_users ADD COLUMN roles_json TEXT NOT NULL DEFAULT '[\"student\"]'")
         db.execute("UPDATE registered_users SET roles_json = json_array(COALESCE(role, 'student'))")
     db.execute("CREATE TABLE IF NOT EXISTS access_settings (id INTEGER PRIMARY KEY CHECK (id = 1), salt TEXT NOT NULL, code_hash TEXT NOT NULL, version INTEGER NOT NULL)")
+    access_columns = {row["name"] for row in db.execute("PRAGMA table_info(access_settings)").fetchall()}
+    if "code_plain" not in access_columns:
+        db.execute("ALTER TABLE access_settings ADD COLUMN code_plain TEXT NOT NULL DEFAULT ''")
     db.execute("CREATE TABLE IF NOT EXISTS access_grants (telegram_id INTEGER PRIMARY KEY, version INTEGER NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS access_bans (telegram_id INTEGER PRIMARY KEY, banned_at TEXT NOT NULL)")
     db.execute("""CREATE TABLE IF NOT EXISTS journal_absences (
@@ -354,6 +357,22 @@ async def api_access(request: web.Request) -> web.Response:
     return web.json_response({"granted": True})
 
 
+async def api_admin_current_access_code(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
+    async with d.users_lock:
+        def read():
+            db = _db_connect(d)
+            try:
+                row = db.execute("SELECT code_plain, version FROM access_settings WHERE id = 1").fetchone()
+                return {"configured": bool(row), "code": (row["code_plain"] or "") if row else ""}
+            finally:
+                db.close()
+        result = await asyncio.to_thread(read)
+    return web.json_response(result)
+
+
 async def api_admin_access_code(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     if not require_admin(request, d):
@@ -378,7 +397,7 @@ async def api_admin_access_code(request: web.Request) -> web.Response:
             try:
                 row = db.execute("SELECT version FROM access_settings WHERE id = 1").fetchone()
                 version = (row["version"] if row else 0) + 1
-                db.execute("INSERT INTO access_settings (id, salt, code_hash, version) VALUES (1, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET salt=excluded.salt, code_hash=excluded.code_hash, version=excluded.version", (salt.hex(), digest, version))
+                db.execute("INSERT INTO access_settings (id, salt, code_hash, version, code_plain) VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET salt=excluded.salt, code_hash=excluded.code_hash, version=excluded.version, code_plain=excluded.code_plain", (salt.hex(), digest, version, code)
                 if preserve:
                     db.execute("UPDATE access_grants SET version = ?", (version,))
                 else:
@@ -1205,6 +1224,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_post("/api/journal", api_journal_save)
     app.router.add_post("/api/journal/bulk", api_journal_bulk_save)
     app.router.add_post("/api/access", api_access)
+    app.router.add_get("/api/admin/access-code", api_admin_current_access_code)
     app.router.add_post("/api/admin/access-code", api_admin_access_code)
     app.router.add_get("/api/admin/overview", api_admin_overview)
     app.router.add_get("/api/admin/users", api_admin_users)
