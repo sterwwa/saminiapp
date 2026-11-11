@@ -152,7 +152,7 @@ async function renderNext(){
  ['База знаний','Файлы, методички и конспекты группы','▣','#b96822','knowledge']
  ];
  paths.forEach(([title,desc,icon,color,key],i)=>{
-  const b=el('button','home-action'+(i===6?' wide':'')),ic=el('span','home-action-icon',icon);ic.style.background=color;
+  const b=el('button','home-action'+(key==='knowledge'?' wide':'')),ic=el('span','home-action-icon',icon);ic.style.background=color;
   const copy=el('span','home-action-copy');copy.append(el('b','',title),el('small','',desc));b.append(ic,copy);
   b.onclick=()=>{if(key==='students')showPage('students');else if(key==='journal')showPage('journal');else if(key==='schedule')showPage('schedule');else if(key==='settings')showPage('settings');else toast(title+' — раздел пока не подключён')};
   grid.append(b);
