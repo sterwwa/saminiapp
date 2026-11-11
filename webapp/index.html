@@ -772,7 +772,7 @@ function closeLessonReminder(key){
 }
 function showLessonReminder(date,lesson,minutesLeft,testMode=false,testSeconds=0){
  const key=date+'-'+lesson.start+'-'+(lesson.subject||'')+(testMode?'-TEST':'');
- if(lessonReminderVisibleKey===key)return;
+ if(lessonReminderVisibleKey===key&&document.getElementById('lessonReminderBanner'))return;
  let dismissed=false;if(!testMode){try{dismissed=localStorage.getItem('sa225-lesson-reminder:'+key)==='1'}catch{}}
  if(dismissed)return;
  lessonReminderTimer&&clearInterval(lessonReminderTimer);
