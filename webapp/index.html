@@ -247,7 +247,7 @@ async function renderJournal(){
    }
    sessions.forEach(session=>{
     const sessionKey=session.lesson_date+'|'+session.lesson_number;
-    const card=el('section','card'),head=el('div','upnext'),time=el('div','up-time',String(session.lesson_number)+'-я\\nпара'),info=el('div','up-info');
+    const card=el('section','card'),head=el('div','upnext'),time=el('div','up-time',String(session.lesson_number)+'-я пара'),info=el('div','up-info');
     info.append(el('b','',normalizeJournalSubject(session.subject)),el('small','',session.lesson_date.split('-').reverse().join('.')+' · '+session.lesson_number+'-я пара'));
     head.append(time,info);card.append(head);
     const summary=el('div','journal-count');
