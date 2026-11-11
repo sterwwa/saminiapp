@@ -192,6 +192,15 @@ async function renderJournal(){
    const content=el('div','journal-history-content');
    if(!matching.length){const box=el('div','empty');box.append(el('div','emoji','📚'),el('h3','','Занятий пока нет'),el('p','','В сохранённой истории нет занятий по этому предмету.'));content.append(box);root.append(content);return}
    const title=el('div','section-head');title.append(el('h2','','Посещаемость'),el('span','tag',matching.length+' пар'));content.append(title);
+   if(data.can_edit){
+    const reportBtn=el('button','journal-save','✉️ Отправить отчёт себе в ЛС');
+    reportBtn.onclick=async()=>{reportBtn.disabled=true;reportBtn.textContent='Отправка…';try{
+     await api('/api/journal/send-today-report',{method:'POST',body:'{}'});
+     toast('Отчёт за сегодня отправлен в личные сообщения');
+     reportBtn.textContent='✓ Отчёт отправлен';
+    }catch(e){toast(e.message||'Не удалось отправить отчёт');reportBtn.textContent='✉️ Повторить отправку';reportBtn.disabled=false}};
+    content.append(reportBtn);
+   }
    const absent=new Set(data.absences.map(x=>x.lesson_date+'|'+x.lesson_number+'|'+x.student_id));
    const changed=new Map(),wrap=el('div','journal-table-wrap'),table=el('table','journal-matrix'),thead=el('thead'),hr=el('tr');hr.append(el('th','journal-name-head','Студент'));
    matching.forEach(session=>{
