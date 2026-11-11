@@ -1381,22 +1381,37 @@ async def api_push_subscribe(request: web.Request) -> web.Response:
 
 
 
-async def api_push_test(request: web.Request) -> web.Response:
-    from push_service import send_test_push
+async def api_admin_push_test(request: web.Request) -> web.Response:
+    from push_service import active_subscriptions, send_push
     d: Deps = request.app["deps"]
-    uid = int((request.get("user") or {}).get("id", 0))
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
     private_key = os.getenv("WEBPUSH_VAPID_PRIVATE_KEY", "").strip()
     subject = os.getenv("WEBPUSH_VAPID_SUBJECT", "https://sa225-miniapp-production.up.railway.app").strip()
     if not private_key:
-        return web.json_response({"sent": False, "message": "Push не настроен на сервере"}, status=503)
-    count = await asyncio.to_thread(
-        send_test_push, d.data_dir, uid,
-        {"title": "Вася Бот", "body": "Отлично! Push-уведомления работают на этом устройстве.", "url": "/", "tag": "sa225-push-test"},
-        private_key, subject,
-    )
-    if not count:
-        return web.json_response({"sent": False, "message": "На этом устройстве нет активной push-подписки. Сначала включите Push на устройстве."}, status=404)
-    return web.json_response({"sent": True, "count": count})
+        return web.json_response({"sent": 0, "message": "Push не настроен на сервере"}, status=503)
+
+    targets = await asyncio.to_thread(active_subscriptions, d.data_dir)
+    if not targets:
+        return web.json_response({"sent": 0, "total": 0, "message": "Нет пользователей с активной push-подпиской."})
+
+    payload = {
+        "title": "Вася Бот",
+        "body": "дарова,газява,тест Push'a разработчиком..",
+        "url": "/",
+        "tag": "sa225-admin-push-test",
+    }
+    event_key = f"admin-test-broadcast:{time.time_ns()}"
+
+    def broadcast() -> tuple[int, int]:
+        sent = 0
+        for target in targets:
+            if send_push(d.data_dir, target, f"{event_key}:{target['telegram_id']}:{target['endpoint']}", payload, private_key, subject):
+                sent += 1
+        return sent, len(targets)
+
+    sent, total = await asyncio.to_thread(broadcast)
+    return web.json_response({"sent": sent, "total": total, "message": f"Отправлено push: {sent} из {total} устройств."})
 
 
 async def api_push_unsubscribe(request: web.Request) -> web.Response:
@@ -1470,7 +1485,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/push/config", api_push_config)
     app.router.add_post("/api/push/subscribe", api_push_subscribe)
     app.router.add_post("/api/push/unsubscribe", api_push_unsubscribe)
-    app.router.add_post("/api/push/test", api_push_test)
+    app.router.add_post("/api/admin/push/test", api_admin_push_test)
     return app
 
 
