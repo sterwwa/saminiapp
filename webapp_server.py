@@ -1380,6 +1380,25 @@ async def api_push_subscribe(request: web.Request) -> web.Response:
     return web.json_response({"saved": True})
 
 
+
+async def api_push_test(request: web.Request) -> web.Response:
+    from push_service import send_test_push
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    private_key = os.getenv("WEBPUSH_VAPID_PRIVATE_KEY", "").strip()
+    subject = os.getenv("WEBPUSH_VAPID_SUBJECT", "https://sa225-miniapp-production.up.railway.app").strip()
+    if not private_key:
+        return web.json_response({"sent": False, "message": "Push не настроен на сервере"}, status=503)
+    count = await asyncio.to_thread(
+        send_test_push, d.data_dir, uid,
+        {"title": "Вася Бот", "body": "Отлично! Push-уведомления работают на этом устройстве.", "url": "/", "tag": "sa225-push-test"},
+        private_key, subject,
+    )
+    if not count:
+        return web.json_response({"sent": False, "message": "На этом устройстве нет активной push-подписки. Сначала включите Push на устройстве."}, status=404)
+    return web.json_response({"sent": True, "count": count})
+
+
 async def api_push_unsubscribe(request: web.Request) -> web.Response:
     from push_service import remove_subscription
     d: Deps = request.app["deps"]
@@ -1451,6 +1470,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/push/config", api_push_config)
     app.router.add_post("/api/push/subscribe", api_push_subscribe)
     app.router.add_post("/api/push/unsubscribe", api_push_unsubscribe)
+    app.router.add_post("/api/push/test", api_push_test)
     return app
 
 
