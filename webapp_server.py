@@ -50,6 +50,7 @@ class Deps:
     rate: dict[int, list[float]] = field(default_factory=dict)
     users_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     access_attempts: dict[int, list[float]] = field(default_factory=dict)
+    simulation_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 @web.middleware
@@ -391,6 +392,143 @@ async def api_admin_access_code(request: web.Request) -> web.Response:
     return web.json_response({"saved": True, "code": code, "preserved_existing_access": preserve})
 
 
+def _simulation_state_path(d: Deps) -> Path:
+    return d.data_dir / "schedule_simulation.json"
+
+
+def _read_simulation_state(d: Deps) -> dict:
+    try:
+        value = json.loads(_simulation_state_path(d).read_text(encoding="utf-8"))
+        if isinstance(value, dict):
+            return {"active": bool(value.get("active")), "last_fingerprint": str(value.get("last_fingerprint") or "")}
+    except (OSError, ValueError):
+        pass
+    return {"active": False, "last_fingerprint": ""}
+
+
+def _write_simulation_state(d: Deps, state: dict) -> None:
+    d.data_dir.mkdir(parents=True, exist_ok=True)
+    path = _simulation_state_path(d)
+    temp = path.with_suffix(".tmp")
+    temp.write_text(json.dumps(state, ensure_ascii=False), encoding="utf-8")
+    temp.replace(path)
+
+
+async def api_admin_simulate_change(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
+    uid = int((request.get("user") or {}).get("id", 0))
+    async with d.simulation_lock:
+        state = await asyncio.to_thread(_read_simulation_state, d)
+        today = datetime.now(d.tz).date()
+        selected_day = None
+        lessons = []
+        for offset in range(1, 8):
+            candidate_day = today + timedelta(days=offset)
+            try:
+                try:
+                    raw = await d.get_lessons(candidate_day, fresh=True)
+                except TypeError:
+                    raw = await d.get_lessons(candidate_day)
+                candidate_lessons = _day_json(d, candidate_day, raw, False)["lessons"]
+            except Exception:
+                log.exception("Не удалось загрузить расписание для тестовой симуляции на %s", candidate_day)
+                continue
+            if candidate_lessons:
+                selected_day, lessons = candidate_day, candidate_lessons
+                break
+        if not lessons or selected_day is None:
+            return web.json_response({"error": "schedule_unavailable", "message": "Не удалось получить пары с сайта техникума для теста. Попробуй позже."}, status=503)
+
+        old = dict(secrets.choice(lessons))
+        slots = d.bells.day_times(selected_day)
+        occupied = {int(x.get("number") or 0) for x in lessons}
+        available_numbers = [int(n) for n in slots if int(n) not in occupied]
+        change_kind = secrets.choice(["room", "subject", "number"])
+        new = dict(old)
+        if change_kind == "room":
+            rooms = ["101", "112", "204", "205", "208", "305", "310", "412", "501"]
+            new["room"] = secrets.choice([room for room in rooms if room != str(old.get("room") or "")])
+        elif change_kind == "subject":
+            subjects = ["Математика", "Физика", "Информатика", "Электротехника", "История", "Иностранный язык", "Основы безопасности", "Технологии физического уровня"]
+            new["subject"] = secrets.choice([subject for subject in subjects if subject.casefold() != str(old.get("subject") or "").casefold()])
+        elif available_numbers:
+            new_number = secrets.choice(available_numbers)
+            new["number"] = new_number
+            slot = slots.get(new_number)
+            if slot:
+                new["start"], new["end"] = slot[0].strftime("%H:%M"), slot[1].strftime("%H:%M")
+        else:
+            rooms = ["101", "112", "204", "205", "208", "305", "310", "412", "501"]
+            new["room"] = secrets.choice([room for room in rooms if room != str(old.get("room") or "")])
+
+        fingerprint = hashlib.sha256(json.dumps(
+            {"date": selected_day.isoformat(), "old": old, "new": new},
+            ensure_ascii=False, sort_keys=True, default=str
+        ).encode("utf-8")).hexdigest()
+        if fingerprint == state.get("last_fingerprint"):
+            rooms = ["101", "112", "204", "205", "208", "305", "310", "412", "501"]
+            alternatives = [room for room in rooms if room not in {str(old.get("room") or ""), str(new.get("room") or "")}]
+            if alternatives:
+                new["room"] = secrets.choice(alternatives)
+            else:
+                new["subject"] = "Физика" if str(old.get("subject")) != "Физика" else "Математика"
+            fingerprint = hashlib.sha256(json.dumps(
+                {"date": selected_day.isoformat(), "old": old, "new": new},
+                ensure_ascii=False, sort_keys=True, default=str
+            ).encode("utf-8")).hexdigest()
+
+        import html as _html
+        nl = chr(10)
+        def lesson_line(item: dict) -> str:
+            number = _html.escape(str(item.get("number") or "—"))
+            subject = _html.escape(str(item.get("subject") or "Занятие"))
+            room = _html.escape(str(item.get("room") or "не указан"))
+            start = _html.escape(str(item.get("start") or "—"))
+            end = _html.escape(str(item.get("end") or "—"))
+            return f"{number}-я пара · {start}–{end}{nl}{subject} · кабинет {room}"
+
+        message = nl.join([
+            "🧪 <b>ТЕСТОВАЯ СИМУЛЯЦИЯ ИЗМЕНЕНИЯ</b>",
+            "Это случайный пример на основе расписания техникума. Сайт, настоящее расписание и сообщения группы не изменялись.",
+            "",
+            f"<b>{selected_day:%d.%m.%Y}</b>",
+            f"❌ <b>Было:</b>{nl}{lesson_line(old)}",
+            "",
+            f"✅ <b>Стало:</b>{nl}{lesson_line(new)}"
+        ])
+        try:
+            async with ClientSession(timeout=ClientTimeout(total=12)) as session:
+                async with session.post(
+                    f"https://api.telegram.org/bot{d.token}/sendMessage",
+                    json={"chat_id": uid, "text": "📬 " + message, "parse_mode": "HTML"}
+                ) as response:
+                    result = await response.json(content_type=None)
+            if not result.get("ok"):
+                description = str(result.get("description") or "Telegram не принял сообщение")
+                return web.json_response({"error": "telegram_delivery_failed", "message": description}, status=502)
+        except Exception:
+            log.exception("Не удалось отправить тестовое изменение администратору %s", uid)
+            return web.json_response({"error": "telegram_delivery_failed", "message": "Не удалось отправить тест в Telegram. Проверь, что ты запускал бота через /start."}, status=502)
+
+        state["active"] = True
+        state["last_fingerprint"] = fingerprint
+        await asyncio.to_thread(_write_simulation_state, d, state)
+    return web.json_response({"sent": True, "active": True, "date": selected_day.isoformat()})
+
+
+async def api_admin_restore_schedule_mode(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только для администратора"}, status=403)
+    async with d.simulation_lock:
+        state = await asyncio.to_thread(_read_simulation_state, d)
+        state["active"] = False
+        await asyncio.to_thread(_write_simulation_state, d, state)
+    return web.json_response({"saved": True, "active": False, "message": "Штатный режим включён. Реальное расписание не менялось."})
+
+
 async def api_admin_overview(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     if not require_admin(request, d):
@@ -399,7 +537,8 @@ async def api_admin_overview(request: web.Request) -> web.Response:
         await _load_prefs(d)
         total = len(d.prefs)
         counts = {key: sum(1 for prefs in d.prefs.values() if prefs.get(key, default)) for key, default in DEFAULT_PREFS.items()}
-    return web.json_response({"admin": True, "group": d.group, "timezone": d.tz_name,
+    simulation = await asyncio.to_thread(_read_simulation_state, d)
+    return web.json_response({"admin": True, "group": d.group, "timezone": d.tz_name, "simulation_mode": simulation["active"],
         "preferences": {"users_with_saved_settings": total, "enabled": counts},
         "bells_configured": d.bells.configured,
         "bells": {day: {str(n): [a.strftime("%H:%M"), b.strftime("%H:%M")] for n, (a, b) in slots.items()} for day, slots in d.bells.table.items()},
@@ -1206,6 +1345,8 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_post("/api/journal/bulk", api_journal_bulk_save)
     app.router.add_post("/api/access", api_access)
     app.router.add_post("/api/admin/access-code", api_admin_access_code)
+    app.router.add_post("/api/admin/simulate-change", api_admin_simulate_change)
+    app.router.add_post("/api/admin/restore-schedule-mode", api_admin_restore_schedule_mode)
     app.router.add_get("/api/admin/overview", api_admin_overview)
     app.router.add_get("/api/admin/users", api_admin_users)
     app.router.add_put("/api/admin/users/{user_id:\\d+}", api_admin_update_user)
