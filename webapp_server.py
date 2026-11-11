@@ -252,6 +252,20 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         updated_at TEXT NOT NULL,
         PRIMARY KEY (lesson_date, lesson_number, student_id)
     )""")
+    db.execute("""CREATE TABLE IF NOT EXISTS journal_sessions (
+        lesson_date TEXT NOT NULL,
+        lesson_number TEXT NOT NULL,
+        subject TEXT NOT NULL DEFAULT '',
+        marked_by INTEGER NOT NULL,
+        updated_at TEXT NOT NULL,
+        PRIMARY KEY (lesson_date, lesson_number)
+    )""")
+    # Restore session headers for absence records saved before the history view.
+    db.execute("""INSERT OR IGNORE INTO journal_sessions
+        (lesson_date, lesson_number, subject, marked_by, updated_at)
+        SELECT lesson_date, lesson_number, '', MIN(marked_by), MAX(updated_at)
+        FROM journal_absences GROUP BY lesson_date, lesson_number""")
+    db.commit()
     return db
 
 
