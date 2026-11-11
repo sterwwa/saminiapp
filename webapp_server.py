@@ -729,7 +729,7 @@ async def api_profile(request: web.Request) -> web.Response:
         values.append(birth_date)
     if "avatar_data" in body:
         avatar_data = body["avatar_data"]
-        if not isinstance(avatar_data, str) or len(avatar_data) > 500000 or (avatar_data and not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}", avatar_data)):
+        if not isinstance(avatar_data, str) or len(avatar_data) > 400000 or (avatar_data and not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}", avatar_data)):
             raise web.HTTPBadRequest(text="Фото должно быть JPG и не больше 350 КБ")
         updates.append("avatar_data = ?")
         values.append(avatar_data)
@@ -1191,7 +1191,7 @@ async def api_preferences(request: web.Request) -> web.Response:
 
 
 def create_app(deps: Deps) -> web.Application:
-    app = web.Application(middlewares=[guard], client_max_size=16 * 1024)
+    app = web.Application(middlewares=[guard], client_max_size=1024 * 1024)
     app["deps"] = deps
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
