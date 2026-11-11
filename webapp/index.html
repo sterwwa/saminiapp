@@ -30,31 +30,35 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}button
 .generated-code{display:block;overflow-wrap:anywhere;padding:14px;border-radius:12px;background:var(--bg);font-size:19px;letter-spacing:1px;text-align:center;user-select:all}
 
 /* Telegram-inspired profile */
-.profile-hero{position:relative;overflow:hidden;border-radius:24px;padding:22px 18px 18px;background:linear-gradient(145deg,#241344 0%,#100b1c 58%,#08080d 100%);color:#fff;text-align:center;margin-bottom:14px;box-shadow:0 14px 28px rgba(0,0,0,.35)}
-.profile-hero:before,.profile-hero:after{content:"";position:absolute;border:1px solid rgba(255,255,255,.14);border-radius:50%;pointer-events:none}
-.profile-hero:before{width:190px;height:190px;right:-90px;top:-105px;box-shadow:0 0 0 22px rgba(255,255,255,.035)}
-.profile-hero:after{width:130px;height:130px;left:-76px;bottom:-92px}
-.profile-avatar-lg{position:relative;z-index:1;width:88px;height:88px;border-radius:50%;display:grid;place-items:center;margin:0 auto 12px;background:rgba(139,92,246,.24);border:3px solid rgba(196,167,255,.82);font-size:32px;font-weight:850;overflow:hidden;box-shadow:0 5px 18px rgba(0,0,0,.15)}
-.profile-avatar-lg img{width:100%;height:100%;object-fit:cover}
-.profile-hero h2{position:relative;z-index:1;margin:0;font-size:21px;letter-spacing:-.35px;font-weight:800}
-.profile-hero .profile-username{position:relative;z-index:1;margin:4px 0 0;font-size:14px;color:rgba(255,255,255,.82)}
-.profile-state{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;margin-top:13px;padding:6px 11px;border-radius:20px;background:rgba(255,255,255,.16);font-size:11px;font-weight:700}
-.profile-state i{width:7px;height:7px;border-radius:50%;background:#70e5b0}
-.profile-section-title{font-size:12px;text-transform:uppercase;letter-spacing:.65px;color:var(--muted);font-weight:800;margin:19px 4px 8px}
-.profile-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:4px 15px;margin-bottom:10px}
-.profile-line{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:53px;border-bottom:1px solid var(--line)}
-.profile-line:last-child{border-bottom:0}
-.profile-line .left{min-width:0}
-.profile-line .label{font-size:12px;color:var(--muted);margin-bottom:2px}
-.profile-line .value{font-size:14px;font-weight:650;overflow-wrap:anywhere}
-.profile-line .value.muted{color:var(--muted);font-weight:500}
-.profile-line .chevron{font-size:19px;color:var(--muted);flex:none}
-.profile-edit{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:14px;padding:13px 16px;background:var(--accent);color:#fff;font-weight:800;font-size:14px;margin:13px 0 2px}
-.profile-edit:active{transform:scale(.985)}
-.profile-note{font-size:11px;line-height:1.5;color:var(--muted);text-align:center;margin:10px 8px 0}
-
-
-.profile-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0 17px}.profile-action{border:1px solid var(--line);background:var(--panel);border-radius:15px;padding:12px 5px;color:var(--text);display:flex;flex-direction:column;align-items:center;gap:7px;font-size:11px;font-weight:700}.profile-action .action-icon{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent);font-size:18px}.profile-line.clickable{cursor:pointer}.profile-line.clickable:active,.profile-action:active{opacity:.7}.profile-edit.secondary{background:var(--panel);color:var(--accent);border:1px solid var(--line)}
+.tg-profile-head{position:relative;display:flex;flex-direction:column;align-items:center;text-align:center;padding:24px 16px 18px;margin:0 0 12px;border-radius:22px;background:var(--panel);border:1px solid var(--line);overflow:hidden}
+.tg-profile-head:before{content:"";position:absolute;width:220px;height:120px;left:50%;top:-82px;transform:translateX(-50%);border-radius:50%;background:color-mix(in srgb,var(--accent) 22%,transparent);filter:blur(24px);pointer-events:none}
+.tg-profile-avatar{position:relative;width:104px;height:104px;border-radius:50%;display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#9b72f5,#5830a9);border:3px solid color-mix(in srgb,var(--accent) 62%,white);color:#fff;font-size:38px;font-weight:800;box-shadow:0 5px 20px rgba(0,0,0,.2)}
+.tg-profile-avatar img{width:100%;height:100%;object-fit:cover}
+.tg-profile-identity{position:relative;min-width:0;max-width:100%;margin-top:12px}
+.tg-profile-identity h2{margin:0;color:var(--text);font-size:21px;line-height:1.25;letter-spacing:-.35px;font-weight:800;overflow-wrap:anywhere}
+.tg-profile-username{margin-top:4px;color:var(--muted);font-size:14px}
+.tg-profile-status{display:inline-flex;align-items:center;gap:7px;margin-top:12px;padding:6px 11px;border-radius:20px;background:color-mix(in srgb,var(--accent) 11%,transparent);color:var(--accent);font-size:11px;font-weight:750}
+.tg-profile-status i{width:7px;height:7px;border-radius:50%;background:var(--good)}
+.tg-profile-group{margin-top:9px;color:var(--muted);font-size:12px;font-weight:650}
+.tg-profile-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:0 0 18px}
+.tg-profile-action{min-width:0;min-height:76px;padding:10px 4px;border:1px solid var(--line);border-radius:15px;background:var(--panel);color:var(--text);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;font-size:11px;font-weight:700}
+.tg-profile-action:active{transform:scale(.97);background:var(--panel2)}
+.tg-profile-action-icon{width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent)}
+.tg-profile-action-icon svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.tg-profile-section{margin:18px 4px 7px;color:var(--muted);font-size:12px;font-weight:750}
+.tg-profile-card{overflow:hidden;margin-bottom:10px;border:1px solid var(--line);border-radius:16px;background:var(--panel);padding:0 14px}
+.tg-profile-row{width:100%;min-height:57px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 1px;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);text-align:left;font:inherit}
+.tg-profile-row:last-child{border-bottom:0}
+.tg-profile-row:disabled{opacity:1;cursor:default}
+.tg-profile-row-copy{min-width:0;display:flex;flex-direction:column;gap:4px}
+.tg-profile-row-label{font-size:11px;color:var(--muted);font-weight:600}
+.tg-profile-row-value{font-size:14px;line-height:1.35;font-weight:650;overflow-wrap:anywhere}
+.tg-profile-row-value.is-subtle{color:var(--muted);font-weight:500}
+.tg-profile-row-end{flex:none;color:var(--muted);font-size:22px;font-weight:300}
+.tg-profile-row.is-clickable{cursor:pointer}
+.tg-profile-row.is-clickable:active{opacity:.65}
+.tg-profile-note{margin:12px 7px 4px;color:var(--muted);font-size:11px;line-height:1.5;text-align:center}
+@media(max-width:360px){.tg-profile-head{padding:20px 12px 16px}.tg-profile-avatar{width:92px;height:92px}.tg-profile-identity h2{font-size:19px}.tg-profile-action{font-size:10px}}
 
 /* Home dashboard */
 .home-head{display:flex;align-items:center;gap:10px;margin:4px 0 18px}
@@ -291,21 +295,69 @@ async function renderJournal(){
 async function copyProfileValue(value,label){try{await navigator.clipboard.writeText(String(value));toast(label+' скопирован')}catch{toast('Не удалось скопировать')}}
 async function editProfileBio(){const current=state.me?.bio||'';const value=window.prompt('О себе (до 70 символов)',current);if(value===null)return;const bio=value.trim();if(bio.length>70){toast('Максимум 70 символов');return}try{const data=await api('/api/profile',{method:'POST',body:JSON.stringify({bio})});state.me.bio=data.bio;renderProfile();toast('Описание профиля сохранено')}catch(e){toast(e.message||'Не удалось сохранить описание')}}
 function renderProfile(){
- const root=$('#profileContent');root.replaceChildren();const u=state.me?.user||{},registered=state.me?.registration||{};
- const fullName=registered.full_name||[u.first_name,u.last_name].filter(Boolean).join(' ')||'Пользователь',username=u.username?('@'+u.username):'Не указан',initial=(fullName.trim().charAt(0)||'П').toLocaleUpperCase('ru');
- const tu=tg?.initDataUnsafe?.user||{},photo=typeof tu.photo_url==='string'&&tu.photo_url.startsWith('https://')?tu.photo_url:'';
- const hero=el('section','profile-hero'),avatar=el('div','profile-avatar-lg',initial);
- if(photo){const img=el('img');img.src=photo;img.alt='Аватар профиля';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img)}
- hero.append(avatar,el('h2','',fullName),el('p','profile-username',username));const pill=el('div','profile-state');pill.append(el('i'),document.createTextNode('Пользователь Mini App'));hero.append(pill);root.append(hero);
- const actions=el('div','profile-actions'),action=(symbol,label,fn)=>{const btn=el('button','profile-action');btn.type='button';btn.append(el('span','action-icon',symbol),el('span','',label));btn.onclick=fn;actions.append(btn)};
- action('✎','Изменить ФИО',()=>openRegistration(true));action('ⓘ','О себе',editProfileBio);action('⚙','Настройки',()=>showPage('settings'));root.append(actions);
- const section=t=>root.append(el('div','profile-section-title',t)),card=()=>{const x=el('div','profile-card');root.append(x);return x};
- const line=(c,label,value,click)=>{const r=el('div','profile-line'+(click?' clickable':'')),l=el('div','left');l.append(el('div','label',label),el('div','value'+(value?'':' muted'),value||'Не указано'));r.append(l);if(click){r.append(el('span','chevron','›'));r.onclick=click}c.append(r)};
- section('Информация');let x=card();line(x,'О себе',state.me?.bio||'Добавить информацию о себе',editProfileBio);line(x,'Имя пользователя',username,u.username?()=>copyProfileValue('@'+u.username,'Username'):null);line(x,'Telegram ID',u.id?String(u.id):'—',u.id?()=>copyProfileValue(u.id,'Telegram ID'):null);
- section('Личные данные');x=card();line(x,'Имя в Telegram',[u.first_name,u.last_name].filter(Boolean).join(' ')||'—');line(x,'ФИО для приложения',registered.full_name||'Не заполнено',()=>openRegistration(true));line(x,'Язык интерфейса',(u.language_code||'ru').toUpperCase());
- section('Учебный профиль');x=card();line(x,'Учебная группа',state.me?.group||GROUP);line(x,'Регистрация',registered.registered?'Завершена':'Не завершена');
- const edit=el('button','profile-edit secondary');edit.type='button';edit.textContent='✎  Редактировать ФИО';edit.onclick=()=>openRegistration(true);root.append(edit);
- root.append(el('p','profile-note','Фото, имя и username берутся из Telegram. Их изменение выполняется в настройках самого Telegram. Описание «О себе» хранится отдельно в профиле Mini App.'));
+ const root=$('#profileContent');root.replaceChildren();
+ const u=state.me?.user||{},registered=state.me?.registration||{};
+ const tgName=[u.first_name,u.last_name].filter(Boolean).join(' ').trim();
+ const fullName=registered.full_name||tgName||'Пользователь';
+ const username=u.username?'@'+u.username:'Имя пользователя не задано';
+ const initial=(fullName.trim().charAt(0)||'П').toLocaleUpperCase('ru');
+ const tu=tg?.initDataUnsafe?.user||{};
+ const photo=typeof tu.photo_url==='string'&&tu.photo_url.startsWith('https://')?tu.photo_url:'';
+
+ const header=el('section','tg-profile-head');
+ const avatar=el('div','tg-profile-avatar',initial);
+ if(photo){
+  const img=el('img');img.src=photo;img.alt='Фото профиля';img.referrerPolicy='no-referrer';
+  img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img);
+ }
+ const identity=el('div','tg-profile-identity');
+ identity.append(el('h2','',fullName),el('div','tg-profile-username',username));
+ const status=el('div','tg-profile-status');status.append(el('i'),document.createTextNode('Профиль приложения'));
+ header.append(avatar,identity,status);
+ if(state.me?.group)header.append(el('div','tg-profile-group',state.me.group));
+ root.append(header);
+
+ const actions=el('div','tg-profile-actions');
+ const action=(svg,label,fn)=>{
+  const btn=el('button','tg-profile-action');btn.type='button';
+  const ico=el('span','tg-profile-action-icon');ico.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+svg+'</svg>';
+  btn.append(ico,el('span','',label));btn.onclick=fn;actions.append(btn);
+ };
+ action('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/>','Изменить ФИО',()=>openRegistration(true));
+ action('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/>','О себе',editProfileBio);
+ action('<path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18"/><circle cx="12" cy="12" r="4.2"/>','Настройки',()=>showPage('settings'));
+ root.append(actions);
+
+ const section=(label)=>root.append(el('div','tg-profile-section',label));
+ const card=()=>{const x=el('div','tg-profile-card');root.append(x);return x};
+ const line=(container,label,value,click,subtle=false)=>{
+  const row=el('button','tg-profile-row'+(click?' is-clickable':''));
+  row.type='button';row.disabled=!click;
+  const copy=el('span','tg-profile-row-copy');
+  copy.append(el('span','tg-profile-row-label',label),el('span','tg-profile-row-value'+(subtle?' is-subtle':''),value||'Не указано'));
+  row.append(copy);
+  if(click){const end=el('span','tg-profile-row-end','›');row.append(end);row.onclick=click}
+  container.append(row);
+ };
+ section('Информация');
+ let box=card();
+ line(box,'О себе',state.me?.bio||'Добавить информацию о себе',editProfileBio,!state.me?.bio);
+ line(box,'Имя пользователя',username,u.username?()=>copyProfileValue('@'+u.username,'Username'):null,!u.username);
+ line(box,'Telegram ID',u.id?String(u.id):'Не указан',u.id?()=>copyProfileValue(u.id,'Telegram ID'):null,!u.id);
+
+ section('Личные данные');
+ box=card();
+ line(box,'Имя в Telegram',tgName||'Не указано',null,!tgName);
+ line(box,'ФИО в приложении',registered.full_name||'Не заполнено',()=>openRegistration(true),!registered.full_name);
+ line(box,'Язык интерфейса',(u.language_code||'ru').toUpperCase(),null);
+
+ section('Учебный профиль');
+ box=card();
+ line(box,'Группа',state.me?.group||GROUP,null);
+ line(box,'Статус регистрации',registered.registered?'Завершена':'Не завершена',null,!registered.registered);
+
+ const note=el('p','tg-profile-note','Фото, имя и username синхронизируются с Telegram и доступны здесь только для просмотра. ФИО и описание можно менять отдельно для приложения.');
+ root.append(note);
 }
 async function renderStudents(){
  const root=$('#studentsContent'),sortButton=$('#studentsSortToggle');root.replaceChildren(el('div','skeleton'));
