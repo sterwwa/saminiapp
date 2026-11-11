@@ -877,40 +877,25 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
             db = _db_connect(d)
             try:
                 rows = db.execute("""
-                    SELECT js.lesson_number, js.subject, ru.full_name
+                    SELECT DISTINCT ru.full_name
                     FROM journal_sessions js
-                    LEFT JOIN journal_absences ja
+                    JOIN journal_absences ja
                       ON ja.lesson_date = js.lesson_date AND ja.lesson_number = js.lesson_number
-                    LEFT JOIN registered_users ru ON ru.telegram_id = ja.student_id
+                    JOIN registered_users ru ON ru.telegram_id = ja.student_id
                     WHERE js.lesson_date = ? AND js.subject <> ''
-                    ORDER BY CAST(js.lesson_number AS INTEGER), ru.full_name COLLATE NOCASE
+                      AND ru.full_name IS NOT NULL AND ru.full_name <> ''
+                    ORDER BY ru.full_name COLLATE NOCASE
                 """, (today.isoformat(),)).fetchall()
-                report = {}
-                for row in rows:
-                    number = str(row["lesson_number"])
-                    item = report.setdefault(number, {"subject": str(row["subject"]), "names": []})
-                    if row["full_name"]:
-                        item["names"].append(str(row["full_name"]))
-                return report
+                return [str(row["full_name"]) for row in rows]
             finally:
                 db.close()
         report = await asyncio.to_thread(read_report)
 
     lines = [f"📋 Отсутствующие за {today:%d.%m.%Y}", f"Группа: {d.group}", ""]
-    if not report:
-        lines.append("На сегодня в сохранённом расписании занятий нет.")
+    if report:
+        lines.extend(f"• {name}" for name in report)
     else:
-        any_absent = False
-        for number, item in report.items():
-            lines.append(f"{number}-я пара — {item['subject']}")
-            if item["names"]:
-                any_absent = True
-                lines.extend(f"• {name}" for name in item["names"])
-            else:
-                lines.append("• Отсутствующих нет")
-            lines.append("")
-        if not any_absent:
-            lines.append("За сегодня отсутствующих нет.")
+        lines.append("Сегодня отсутствующих нет.")
     message = "\n".join(lines).strip()
 
     try:
