@@ -398,11 +398,11 @@ async def api_students(request: web.Request) -> web.Response:
                     item = dict(row)
                     uid = int(item["telegram_id"])
                     if uid in d.admin_ids:
-                        item["role"] = "moderator"
+                        item["role"] = "support"
                     item["is_me"] = uid == viewer
                     result.append(item)
                 # Support, староста, заместитель, модератор, затем студенты.
-                priority = {"moderator": 0, "starosta": 1, "deputy": 2, "student": 3}
+                priority = {"support": 0, "starosta": 1, "deputy": 2, "moderator": 3, "student": 4}
                 result.sort(key=lambda item: (priority.get(item["role"], 2), item["full_name"].casefold()))
                 return result
             finally:
