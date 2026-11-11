@@ -786,16 +786,14 @@ function showLessonReminder(date,lesson,minutesLeft){
 async function checkLessonReminder(){
  if(state.page!=='next')return;
  let current=now(),day=state.data?.days?.find(x=>x.date===current.date);
- if(!day||day.error){
-  if(homeReminderDate!==current.date||Date.now()-homeReminderAt>60000){
-   homeReminderDate=current.date;homeReminderAt=Date.now();
-   try{
-    const data=await api('/api/day?date='+encodeURIComponent(current.date));
-    TZ=data.tz||TZ;GROUP=data.group||GROUP;skew=Date.parse(data.now)-Date.now();
-    day=data.day;homeReminderDay=day;
-   }catch{return}
-  }else day=homeReminderDay;
- }else{homeReminderDay=day;homeReminderDate=current.date;homeReminderAt=Date.now()}
+ if(!day||day.error||homeReminderDate!==current.date||Date.now()-homeReminderAt>60000){
+  homeReminderDate=current.date;homeReminderAt=Date.now();
+  try{
+   const data=await api('/api/day?date='+encodeURIComponent(current.date));
+   TZ=data.tz||TZ;GROUP=data.group||GROUP;skew=Date.parse(data.now)-Date.now();
+   day=data.day;homeReminderDay=day;
+  }catch{return}
+ }else day=homeReminderDay||day;
  current=now();
  if(!day||day.error||day.date!==current.date)return;
  const next=(day.lessons||[]).filter(l=>l.start&&l.end).sort((a,b)=>min(a.start)-min(b.start)).find(l=>min(l.start)>current.min&&min(l.start)-current.min<=15);
