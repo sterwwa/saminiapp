@@ -1042,8 +1042,6 @@ function renderSettings(){
  const notify=settingsGroup(root,'Уведомления'),prefs=state.me?.preferences||{lesson_reminders:true,schedule_changes:true,daily_summary:true};
  notify.append(settingsRow('M12 19l9-7-9-7-9 7 9 7z','Куда присылать','Личные сообщения Telegram','Telegram',()=>openSettingsSheet('Куда присылать','Уведомления отправляются в личный чат с ботом. Сначала откройте @vasya_sa_bot и нажмите Start.')));
  [['daily_summary','Расписание на завтра','Каждый день в 20:00'],['schedule_changes','Изменения расписания','Переносы, отмены и новые пары'],['lesson_reminders','Напоминания о парах','Напоминания о скором начале занятий']].forEach(([key,label,desc])=>{const row=el('div','settings-row'),ico=el('span','settings-row-icon');ico.innerHTML=settingsIcon('M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4M12 8v4l3 2');const copy=el('span','settings-row-copy');copy.append(el('b','',label),el('small','',desc));const sw=el('input','settings-switch');sw.type='checkbox';sw.checked=!!prefs[key];sw.setAttribute('aria-label',label);sw.onchange=()=>savePref(key,sw.checked);row.append(ico,copy,sw);notify.append(row)});
- const app=settingsGroup(root,'Приложение');
- app.append(settingsRow('M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M11 18h2','Перейти в приложение','Открыть отдельно от Telegram','',()=>openStandaloneAppSheet()));
  const help=settingsGroup(root,'Помощь');
  help.append(settingsRow('M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.5 9a2.5 2.5 0 1 1 4.5 1.5c-1.2.8-2 1.2-2 2.5M12 17h.01','Поддержка','Написать @met1sa','',()=>{const url='https://t.me/met1sa';if(tg?.openTelegramLink)tg.openTelegramLink(url);else window.open(url,'_blank','noopener,noreferrer')}));
  const appearance=settingsGroup(root,'Оформление'),row=el('div','settings-row'),ico=el('span','settings-row-icon');ico.innerHTML=settingsIcon('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 3v18');const copy=el('span','settings-row-copy');copy.append(el('b','','Тема приложения'),el('small','','Тёмная или светлая тема'));const select=el('select','role-select');select.style.maxWidth='130px';[['dark','Тёмная'],['light','Светлая']].forEach(([v,l])=>{const o=el('option','',l);o.value=v;select.append(o)});select.value=['dark','light'].includes(themePreference)?themePreference:'dark';select.onchange=()=>{applyTheme(select.value);toast(select.value==='dark'?'Тёмная тема включена':'Светлая тема включена')};row.append(ico,copy,select);
@@ -1055,34 +1053,6 @@ appearance.append(row);
   account.append(logout);
  }
  updateFloatingSchedule();
-}
-function openStandaloneAppSheet(){
- const overlay=el('div','standalone-sheet-backdrop'),sheet=el('section','standalone-sheet');
- overlay.setAttribute('role','presentation');
- sheet.setAttribute('role','dialog');sheet.setAttribute('aria-modal','true');sheet.setAttribute('aria-labelledby','standaloneSheetTitle');
- const handle=el('div','standalone-sheet-handle'),close=el('button','standalone-sheet-close','×');
- close.type='button';close.setAttribute('aria-label','Закрыть');
- const top=el('div','standalone-sheet-top');top.append(handle,close);
- const heading=el('h2','standalone-sheet-title','Приложение без Telegram');heading.id='standaloneSheetTitle';
- const description=el('p','standalone-sheet-description','Откройте приложение в браузере и войдите через официальный Telegram Login. Ваш аккаунт и данные останутся прежними.');
- const steps=el('ol','standalone-sheet-steps');
- ['Нажмите «Открыть приложение»','Подтвердите вход через свой аккаунт Telegram','Готово — откроется ваш профиль и данные'].forEach(label=>steps.append(el('li','',label)));
- const action=el('button','standalone-sheet-cta');
- action.type='button';action.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3l-9 9M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg><span>Открыть приложение</span>';
- sheet.append(top,heading,description,steps,action);overlay.append(sheet);
- let closing=false;
- const closeSheet=()=>{if(closing)return;closing=true;overlay.classList.remove('is-open');sheet.classList.remove('is-open');setTimeout(()=>overlay.remove(),260);document.removeEventListener('keydown',onKey)};
- const onKey=e=>{if(e.key==='Escape')closeSheet()};
- close.onclick=closeSheet;overlay.addEventListener('click',e=>{if(e.target===overlay)closeSheet()});
- let touchStart=0,touchCurrent=0;
- sheet.addEventListener('touchstart',e=>{touchStart=e.touches[0]?.clientY||0;touchCurrent=touchStart},{passive:true});
- sheet.addEventListener('touchmove',e=>{touchCurrent=e.touches[0]?.clientY||touchCurrent;if(touchCurrent-touchStart>0)sheet.style.transform='translateY('+Math.min(160,touchCurrent-touchStart)+'px)'},{passive:true});
- sheet.addEventListener('touchend',()=>{if(touchCurrent-touchStart>90)closeSheet();else sheet.style.transform='';touchStart=touchCurrent=0},{passive:true});
- action.onclick=()=>{const url=location.href;if(tg?.openLink)tg.openLink(url);else window.open(url,'_blank','noopener,noreferrer')};
- document.body.append(overlay);document.addEventListener('keydown',onKey);
- requestAnimationFrame(()=>{overlay.classList.add('is-open');sheet.classList.add('is-open')});
- close.focus({preventScroll:true});
- return overlay;
 }
 function openInviteSheet(){
  const wrap=el('div','invite-content'),code=el('div','settings-sheet-code','ЗАГРУЗКА…'),hint=el('p','','Загружаем действующий код приглашения. Уже зарегистрированные пользователи сохранят доступ.');
