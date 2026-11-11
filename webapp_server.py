@@ -725,11 +725,18 @@ def _journal_roles(d: Deps, uid: int) -> list[str]:
         roles = []
     if not isinstance(roles, list):
         roles = []
-    return [r for r in roles if r in {"student", "deputy", "starosta", "moderator"}] or [registered.get("role") or "student"]
+    # Keep the primary role as well as additional roles. Older accounts may
+    # have a stale roles_json value that otherwise hides starosta/deputy/support.
+    allowed = {"student", "deputy", "starosta", "moderator", "support"}
+    combined = [r for r in roles if r in allowed]
+    primary = registered.get("role")
+    if primary in allowed and primary not in combined:
+        combined.append(primary)
+    return combined or ["student"]
 
 
 def _journal_can_edit(d: Deps, uid: int) -> bool:
-    return uid in d.admin_ids or bool(set(_journal_roles(d, uid)) & {"starosta", "deputy"})
+    return uid in d.admin_ids or bool(set(_journal_roles(d, uid)) & {"starosta", "deputy", "support"})
 
 
 async def api_journal_get(request: web.Request) -> web.Response:
