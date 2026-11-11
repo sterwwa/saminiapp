@@ -165,17 +165,13 @@ async function renderNext(){
 async function renderJournal(){
  const root=$('#journalContent'),seq=++journalRenderSeq;root.replaceChildren(el('div','skeleton'));
  try{
-  const today=now().date,defaultFrom=new Date(Date.now()-29*86400000).toISOString().slice(0,10);
   const controls=el('div','journal-filters');
-  const fromWrap=el('label','journal-filter','С даты'),from=el('input','journal-date');from.type='date';from.value=defaultFrom;fromWrap.append(from);
-  const toWrap=el('label','journal-filter','По дату'),to=el('input','journal-date');to.type='date';to.value=today;toWrap.append(to);
   const subjectWrap=el('label','journal-filter','Предмет'),subject=el('select','journal-select');subject.append(new Option('Выбери предмет',''));subjectWrap.append(subject);
   const dateWrap=el('label','journal-filter','Дата занятия'),dateSelect=el('select','journal-select');dateSelect.append(new Option('Сначала выбери предмет',''));dateWrap.append(dateSelect);
-  controls.append(subjectWrap,dateWrap,fromWrap,toWrap);root.replaceChildren(controls);
+  controls.append(subjectWrap,dateWrap);root.replaceChildren(controls);
   let data=null;
   const load=async()=>{
-   if(from.value>to.value){toast('Начало периода позже окончания');return}
-   data=await api('/api/journal/history?from='+encodeURIComponent(from.value)+'&to='+encodeURIComponent(to.value));
+   data=await api('/api/journal/history');
    if(seq!==journalRenderSeq)return;
    const previousSubject=subject.value,previousDate=dateSelect.value;
    const subjects=[...new Set(data.sessions.map(x=>String(x.subject||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
@@ -190,12 +186,12 @@ async function renderJournal(){
    if(!subject.value)return;
    const matching=data.sessions.filter(x=>String(x.subject||'').trim()===subject.value).sort((a,b)=>a.lesson_date.localeCompare(b.lesson_date)||Number(a.lesson_number)-Number(b.lesson_number));
    const counts=new Map();matching.forEach(x=>counts.set(x.lesson_date,(counts.get(x.lesson_date)||0)+1));
-   matching.forEach((x,i)=>{const label=x.lesson_date.split('-').reverse().join('.')+(counts.get(x.lesson_date)>1?' · занятие '+(matching.filter(y=>y.lesson_date===x.lesson_date).findIndex(y=>y.lesson_number===x.lesson_number)+1):'');dateSelect.append(new Option(label,x.lesson_date+'|'+x.lesson_number))});
+   matching.forEach(x=>{const count=matching.filter(y=>y.lesson_date===x.lesson_date).findIndex(y=>y.lesson_number===x.lesson_number)+1;const label=x.lesson_date.split('-').reverse().join('.')+(counts.get(x.lesson_date)>1?' · занятие '+count:'');dateSelect.append(new Option(label,x.lesson_date+'|'+x.lesson_number))});
    const chosen=matching.some(x=>x.lesson_date+'|'+x.lesson_number===preferredDate)?preferredDate:(matching.length?matching[matching.length-1].lesson_date+'|'+matching[matching.length-1].lesson_number:'');
    dateSelect.value=chosen;
    const session=matching.find(x=>x.lesson_date+'|'+x.lesson_number===chosen);
    const content=el('div','journal-history-content');
-   if(!session){const box=el('div','empty');box.append(el('div','emoji','📚'),el('h3','','Нет занятий по этому предмету'),el('p','','В выбранном периоде предмет не найден в расписании.'));content.append(box);root.append(content);return}
+   if(!session){const box=el('div','empty');box.append(el('div','emoji','📚'),el('h3','','Занятий пока нет'),el('p','','В сохранённой истории нет занятий по этому предмету.'));content.append(box);root.append(content);return}
    const title=el('div','section-head');title.append(el('h2','','Посещаемость'),el('span','tag',session.lesson_date.split('-').reverse().join('.')));content.append(title);
    const absent=new Set(data.absences.map(x=>x.lesson_date+'|'+x.lesson_number+'|'+x.student_id));
    const changed=new Map(),wrap=el('div','journal-table-wrap'),table=el('table','journal-matrix'),thead=el('thead'),hr=el('tr');hr.append(el('th','journal-name-head','Студент'),el('th','journal-session-head','Статус'));thead.append(hr);table.append(thead);
@@ -208,7 +204,7 @@ async function renderJournal(){
     td.append(button);tr.append(name,td);tbody.append(tr);
    });
    table.append(tbody);wrap.append(table);content.append(wrap);
-   content.append(el('p','notice','Н — отсутствовал · Был — присутствовал. Отметки сохраняются отдельно для выбранного предмета и даты.'));
+   content.append(el('p','notice','Н — отсутствовал · Был — присутствовал. История хранится в приложении и не загружается заново с сайта техникума при каждом открытии.'));
    if(data.can_edit){
     const save=el('button','journal-save','Сохранить изменения');save.disabled=true;save.classList.add('is-idle');
     save.onclick=async()=>{save.disabled=true;save.textContent='Сохранение…';try{
@@ -221,7 +217,6 @@ async function renderJournal(){
    root.append(content);
   };
   subject.onchange=()=>renderSelected('');dateSelect.onchange=()=>renderSelected(dateSelect.value);
-  from.onchange=()=>load().catch(e=>toast(e.message));to.onchange=()=>load().catch(e=>toast(e.message));
   await load();
  }catch(e){if(seq===journalRenderSeq)root.replaceChildren(errorBox(e.message))}
 }
