@@ -907,21 +907,21 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
                 db.close()
         students, absent_ids = await asyncio.to_thread(read_report)
 
-    present_names = [
+    absent_names = [
         str(row["full_name"]).strip()
         for row in students
         if int(row["telegram_id"]) not in d.admin_ids
-        and int(row["telegram_id"]) not in absent_ids
+        and int(row["telegram_id"]) in absent_ids
     ]
 
     lines = [
-        f"📋 Присутствующие за {report_day:%d.%m.%Y}",
+        f"📋 Отсутствующие за {report_day:%d.%m.%Y}",
         f"Группа: {d.group}:"
     ]
-    if present_names:
-        lines.extend(f"• {name}" for name in present_names)
+    if absent_names:
+        lines.extend(f"• {name}" for name in absent_names)
     else:
-        lines.append("Список присутствующих пуст.")
+        lines.append("Отсутствующих нет.")
     message = "\\n".join(lines).strip()
 
     try:
@@ -953,11 +953,11 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
         log.exception("Не удалось связаться с Telegram при отправке отчёта пользователю %s", uid)
         return web.json_response({"error": "telegram_unavailable", "message": "Не удалось связаться с Telegram. Попробуйте позже."}, status=502)
 
-    # Отчёт автоматически удаляется через 3 минуты после отправки.
+    # Отчёт автоматически удаляется через 30 секунд после отправки.
     sent_message_id = (result.get("result") or {}).get("message_id")
     if sent_message_id:
         async def delete_report_later() -> None:
-            await asyncio.sleep(180)
+            await asyncio.sleep(30)
             try:
                 async with ClientSession(timeout=ClientTimeout(total=12)) as delete_session:
                     async with delete_session.post(
