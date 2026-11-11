@@ -643,7 +643,9 @@ async def api_students(request: web.Request) -> web.Response:
             finally:
                 db.close()
         users = await asyncio.to_thread(read)
-    semaphore = asyncio.Semaphore(5)\n    async def attach_status(item):\n        async with semaphore:\n            item["emoji_status"] = await _get_emoji_status(d, int(item["telegram_id"]))\n    await asyncio.gather(*(attach_status(item) for item in users))\n    return web.json_response({"students": users, "total": len(users)})
+    semaphore = asyncio.Semaphore(5)\n    async def attach_status(item):\n        async with semaphore:\n            profile = await _get_emoji_status(d, int(item["telegram_id"]))
+            item["is_premium"] = bool(profile and profile.get("is_premium"))
+            item["emoji_status"] = profile.get("emoji_status") if profile else None\n    await asyncio.gather(*(attach_status(item) for item in users))\n    return web.json_response({"students": users, "total": len(users)})
 
 async def api_admin_update_role(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
@@ -830,14 +832,13 @@ async def _get_emoji_status(d: Deps, user_id: int) -> dict | None:
         result = None
     else:
         custom_id = str(telegram_user.get("emoji_status_custom_emoji_id") or "")
-        result = None
+        result = {"is_premium": bool(telegram_user.get("is_premium")), "emoji_status": None}
         if custom_id:
             stickers = await _telegram_api_json(d, "getCustomEmojiStickers", {"custom_emoji_ids": [custom_id]})
             sticker = stickers[0] if isinstance(stickers, list) and stickers and isinstance(stickers[0], dict) else {}
             fallback = str(sticker.get("emoji") or "")
             if fallback:
-                result = {"custom_emoji_id": custom_id, "emoji": fallback,
-                          "is_premium": bool(telegram_user.get("is_premium"))}
+                result["emoji_status"] = {"custom_emoji_id": custom_id, "emoji": fallback}
     async with d.emoji_lock:
         d.emoji_cache[user_id] = (time.monotonic(), result)
     return result
@@ -860,7 +861,7 @@ async def api_me(request: web.Request) -> web.Response:
                  "language_code": str(user.get("language_code", "ru"))[:12],
                  "photo_url": str(user.get("photo_url", ""))[:2048] if str(user.get("photo_url", "")).startswith("https://") else "",
                  "is_premium": bool(emoji_status and emoji_status.get("is_premium"))},
-        "emoji_status": emoji_status,
+        "emoji_status": emoji_status.get("emoji_status") if emoji_status else None,
         "group": d.group, "timezone": d.tz_name, "preferences": prefs, "is_admin": require_admin(request, d),
         "registration": {"registered": registered is not None, "full_name": registered["full_name"] if registered else ""},
         "role": "support" if uid in d.admin_ids else (registered["role"] if registered else "student"),
