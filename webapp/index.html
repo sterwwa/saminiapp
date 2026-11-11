@@ -26,6 +26,31 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}button
 @media(max-height:700px){.gate{place-items:start center;padding-top:max(12px,env(safe-area-inset-top));padding-bottom:12px}.gate-card{margin:auto 0}}
 .preserve-choice{display:flex;gap:9px;align-items:flex-start;font-size:13px;color:var(--muted);margin-top:12px}.preserve-choice[hidden]{display:none}.user-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:9px}.user-actions button{font-size:12px;padding:7px 10px;border-radius:10px;background:var(--panel2)}
 .generated-code{display:block;overflow-wrap:anywhere;padding:14px;border-radius:12px;background:var(--bg);font-size:19px;letter-spacing:1px;text-align:center;user-select:all}
+
+/* Telegram-inspired profile */
+.profile-hero{position:relative;overflow:hidden;border-radius:24px;padding:22px 18px 18px;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 92%,#2869df),#765be4);color:#fff;text-align:center;margin-bottom:14px;box-shadow:0 14px 28px rgba(69,94,210,.18)}
+.profile-hero:before,.profile-hero:after{content:"";position:absolute;border:1px solid rgba(255,255,255,.14);border-radius:50%;pointer-events:none}
+.profile-hero:before{width:190px;height:190px;right:-90px;top:-105px;box-shadow:0 0 0 22px rgba(255,255,255,.035)}
+.profile-hero:after{width:130px;height:130px;left:-76px;bottom:-92px}
+.profile-avatar-lg{position:relative;z-index:1;width:88px;height:88px;border-radius:50%;display:grid;place-items:center;margin:0 auto 12px;background:rgba(255,255,255,.2);border:3px solid rgba(255,255,255,.78);font-size:32px;font-weight:850;overflow:hidden;box-shadow:0 5px 18px rgba(0,0,0,.15)}
+.profile-avatar-lg img{width:100%;height:100%;object-fit:cover}
+.profile-hero h2{position:relative;z-index:1;margin:0;font-size:21px;letter-spacing:-.35px;font-weight:800}
+.profile-hero .profile-username{position:relative;z-index:1;margin:4px 0 0;font-size:14px;color:rgba(255,255,255,.82)}
+.profile-state{position:relative;z-index:1;display:inline-flex;align-items:center;gap:6px;margin-top:13px;padding:6px 11px;border-radius:20px;background:rgba(255,255,255,.16);font-size:11px;font-weight:700}
+.profile-state i{width:7px;height:7px;border-radius:50%;background:#70e5b0}
+.profile-section-title{font-size:12px;text-transform:uppercase;letter-spacing:.65px;color:var(--muted);font-weight:800;margin:19px 4px 8px}
+.profile-card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:4px 15px;margin-bottom:10px}
+.profile-line{display:flex;align-items:center;justify-content:space-between;gap:14px;min-height:53px;border-bottom:1px solid var(--line)}
+.profile-line:last-child{border-bottom:0}
+.profile-line .left{min-width:0}
+.profile-line .label{font-size:12px;color:var(--muted);margin-bottom:2px}
+.profile-line .value{font-size:14px;font-weight:650;overflow-wrap:anywhere}
+.profile-line .value.muted{color:var(--muted);font-weight:500}
+.profile-line .chevron{font-size:19px;color:var(--muted);flex:none}
+.profile-edit{width:100%;display:flex;align-items:center;justify-content:center;gap:8px;border-radius:14px;padding:13px 16px;background:var(--accent);color:#fff;font-weight:800;font-size:14px;margin:13px 0 2px}
+.profile-edit:active{transform:scale(.985)}
+.profile-note{font-size:11px;line-height:1.5;color:var(--muted);text-align:center;margin:10px 8px 0}
+
 </style>
 </head>
 <body>
@@ -68,7 +93,44 @@ function renderSchedule(){const root=$('#scheduleContent');root.replaceChildren(
 async function changeDate(d){state.sel=d;state.error=null;renderSchedule();try{if(state.view==='week')await loadWeek();else await loadDay()}catch(e){state.error=e.message}renderSchedule()}
 function upcoming(){const n=now(),items=[];for(let offset=0;offset<8;offset++){const d=add(n.date,offset),week=state.cache.get(monday(d))?.data,day=week?.days?.find(x=>x.date===d);if(!day||day.error)continue;for(const l of day.lessons){if(!l.start||!l.end)continue;const start=min(l.start);if(offset===0&&start<=n.min)continue;items.push({date:d,offset,lesson:l})}}return items.slice(0,5)}
 async function renderNext(){const root=$('#nextContent');root.replaceChildren();$('#nextSub').textContent=`Группа ${GROUP} · ближайшие занятия`;if(!state.data){root.append(el('div','skeleton'));return}try{const currentMonday=monday(now().date),nextMonday=monday(add(now().date,7));if(!state.cache.has(currentMonday)){const current=await api(`/api/week?date=${encodeURIComponent(now().date)}`);state.cache.set(currentMonday,{data:current,at:Date.now()})}if(!state.cache.has(nextMonday)){const extra=await api(`/api/week?date=${encodeURIComponent(nextMonday)}`);state.cache.set(nextMonday,{data:extra,at:Date.now()})}}catch(e){/* расписание дня уже загружено; ошибка соседней недели не скрывает пары */}const items=upcoming();if(!items.length){root.append(emptyBox('Ближайших пар нет','На ближайшие дни занятия не найдены.','🎉'));return}items.forEach((x,i)=>{const card=el('div','card'),row=el('div','upnext'),time=el('div','up-time',x.lesson.start),info=el('div','up-info');info.append(el('b','',x.lesson.subject),el('small','',[x.offset===0?'Сегодня':x.offset===1?'Завтра':`${WD[wd(x.date)]}, ${dm(x.date)}`,x.lesson.room&&`каб. ${x.lesson.room}`,x.lesson.teacher].filter(Boolean).join(' · ')));row.append(time,info,el('span','tag',x.offset===0?'Скоро':dm(x.date)));card.append(row);root.append(card)})}
-function renderProfile(){const root=$('#profileContent');root.replaceChildren();const u=state.me?.user||{},registered=state.me?.registration||{},name=registered.full_name||[u.first_name,u.last_name].filter(Boolean).join(' ')||'Пользователь',initial=(name||'П').slice(0,1).toUpperCase();const card=el('div','card'),head=el('div','profile-head');head.append(el('div','avatar',''));head.lastChild.textContent=initial;const info=el('div');info.append(el('h2','',name),el('p','',u.username?`@${u.username}`:'Профиль Telegram'));head.append(info);card.append(head);const details=[['Telegram ID',u.id||'—'],['Имя в Telegram',[u.first_name,u.last_name].filter(Boolean).join(' ')||'—'],['Username',u.username?`@${u.username}`:'—'],['Язык',u.language_code||'ru'],['Учебная группа',state.me?.group||GROUP]];details.forEach(([a,b])=>{const r=el('div','info-row');r.append(el('span','',a),el('b','',b));card.append(r)});const edit=el('button','primary','Изменить ФИО');edit.onclick=()=>openRegistration(true);card.append(edit);root.append(card,el('p','notice','Ваше ФИО сохраняется с вашего согласия и доступно администратору приложения.'))}
+function renderProfile(){
+ const root=$('#profileContent');root.replaceChildren();
+ const u=state.me?.user||{},registered=state.me?.registration||{};
+ const fullName=registered.full_name||[u.first_name,u.last_name].filter(Boolean).join(' ')||'Пользователь';
+ const username=u.username?('@'+u.username):'Не указан';
+ const initial=(fullName.trim().charAt(0)||'П').toLocaleUpperCase('ru');
+ const telegramUser=tg?.initDataUnsafe?.user||{};
+ const photo=typeof telegramUser.photo_url==='string'&&telegramUser.photo_url.startsWith('https://')?telegramUser.photo_url:'';
+ const hero=el('section','profile-hero');
+ const avatar=el('div','profile-avatar-lg',initial);
+ if(photo){const img=el('img');img.src=photo;img.alt='Аватар профиля';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img)}
+ hero.append(avatar,el('h2','',fullName),el('p','profile-username',username));
+ const statePill=el('div','profile-state');statePill.append(el('i'),document.createTextNode('Профиль Telegram'));hero.append(statePill);
+ const makeSection=(title,rows)=>{
+  root.append(el('div','profile-section-title',title));
+  const card=el('div','profile-card');
+  rows.forEach(([label,value])=>{
+   const line=el('div','profile-line'),left=el('div','left');
+   left.append(el('div','label',label),el('div','value',value||'—'));
+   line.append(left);card.append(line);
+  });
+  root.append(card);
+ };
+ root.append(hero);
+ makeSection('Аккаунт Telegram',[
+  ['Telegram ID',u.id?String(u.id):'—'],
+  ['Имя в Telegram',[u.first_name,u.last_name].filter(Boolean).join(' ')||'—'],
+  ['Имя пользователя',username],
+  ['Язык интерфейса',(u.language_code||'ru').toUpperCase()]
+ ]);
+ makeSection('Учебный профиль',[
+  ['ФИО',registered.full_name||'Не заполнено'],
+  ['Учебная группа',state.me?.group||GROUP],
+  ['Статус',registered.registered?'Профиль заполнен':'Требуется заполнить профиль']
+ ]);
+ const edit=el('button','profile-edit');edit.type='button';edit.append(document.createTextNode('✎  Изменить ФИО'));edit.onclick=()=>openRegistration(true);root.append(edit);
+ root.append(el('p','profile-note','Данные Telegram получены из авторизованного сеанса. Изменить имя пользователя и фотографию можно в самом Telegram.'));
+}
 function renderSettings(){const root=$('#settingsContent');root.replaceChildren();const themeCard=el('div','card'),themeRow=el('div','setting'),themeText=el('div');themeText.append(el('b','','Тёмная тема'),el('small','','Выберите светлое или тёмное оформление приложения.'));const themeSwitch=el('input','switch');themeSwitch.type='checkbox';themeSwitch.checked=effectiveTheme()==='dark';themeSwitch.setAttribute('aria-label','Тёмная тема');themeSwitch.onchange=()=>{applyTheme(themeSwitch.checked?'dark':'light');toast(themeSwitch.checked?'Включена тёмная тема':'Включена светлая тема')};themeRow.append(themeText,themeSwitch);themeCard.append(themeRow);root.append(themeCard);const prefs=state.me?.preferences||{lesson_reminders:true,schedule_changes:true,daily_summary:true},card=el('div','card');const rows=[['lesson_reminders','Напоминания о парах','Предпочтение для уведомлений о скором начале занятий.'],['schedule_changes','Изменения расписания','Предпочтение для сообщений об изменениях.'],['daily_summary','Ежедневная сводка','Предпочтение для ежедневного расписания.']];rows.forEach(([key,title,desc])=>{const row=el('div','setting'),txt=el('div');txt.append(el('b','',title),el('small','',desc));const input=el('input','switch');input.type='checkbox';input.checked=!!prefs[key];input.setAttribute('aria-label',title);input.onchange=()=>savePref(key,input.checked);row.append(txt,input);card.append(row)});root.append(card);root.append(el('p','notice',state.me?.notifications_note||'Настройки сохраняются в вашем профиле. Для фоновых push-уведомлений нужна отдельная серверная рассылка.'))}
 async function renderAdmin(){const root=$('#adminContent');root.replaceChildren(el('div','skeleton'));try{const [a,list]=await Promise.all([api('/api/admin/overview'),api('/api/admin/users')]);root.replaceChildren();const accessCard=el('div','card');accessCard.append(el('h3','','Код входа'));accessCard.append(el('p','notice','При смене выберите: отключить уже вошедших пользователей или сохранить им доступ.'));const change=el('button','primary','Изменить код доступа');change.onclick=()=>openAccessGate(true);accessCard.append(change);root.append(accessCard);const card=el('div','card');const rows=[['Группа',a.group],['Часовой пояс',a.timezone],['Источник расписания',a.schedule_source],['Зарегистрировано пользователей',list.total],['Пользователей с сохранёнными настройками',a.preferences.users_with_saved_settings],['Время звонков',a.bells_configured?'настроено':'не настроено']];rows.forEach(([k,v])=>{const r=el('div','info-row');r.append(el('span','',k),el('b','',v));card.append(r)});root.append(card);const users=el('div','card');users.append(el('h3','','Зарегистрированные пользователи'));if(!list.users.length)users.append(el('p','notice','Пока никто не заполнил профиль.'));list.users.forEach(u=>{const item=el('div','user-card'),title=el('h3','',u.full_name+(u.banned?' · доступ закрыт':''));item.append(title);const meta=[`Telegram ID: ${u.telegram_id}`,u.username?`@${u.username}`:null,[u.first_name,u.last_name].filter(Boolean).join(' ')||null,u.language_code?`Язык: ${u.language_code}`:null,`Регистрация: ${new Date(u.created_at).toLocaleString('ru-RU')}`].filter(Boolean);item.append(el('div','user-meta',meta.join(' · ')));const actions=el('div','user-actions'),edit=el('button','','Изменить ФИО');edit.onclick=async()=>{const value=prompt('Новое ФИО студента',u.full_name);if(value===null)return;try{await api(`/api/admin/users/${u.telegram_id}`,{method:'PUT',body:JSON.stringify({full_name:value})});toast('ФИО обновлено');renderAdmin()}catch(e){toast(e.message)}};actions.append(edit);if(u.banned){const restore=el('button','','Вернуть доступ');restore.onclick=async()=>{try{await api(`/api/admin/users/${u.telegram_id}/restore`,{method:'POST'});toast('Доступ восстановлен. Студенту нужен код входа.');renderAdmin()}catch(e){toast(e.message)}};actions.append(restore)}else if(Number(u.telegram_id)!==Number(state.me?.user?.id)){const kick=el('button','','Закрыть доступ');kick.onclick=async()=>{if(!confirm(`Закрыть ${u.full_name} доступ к приложению?`))return;try{await api(`/api/admin/users/${u.telegram_id}/kick`,{method:'POST'});toast('Доступ закрыт');renderAdmin()}catch(e){toast(e.message)}};actions.append(kick)}item.append(actions);users.append(item)});root.append(users);const p=el('div','card');p.append(el('h3','','Сохранённые предпочтения'));Object.entries(a.preferences.enabled).forEach(([k,v])=>{const r=el('div','info-row');r.append(el('span','',({lesson_reminders:'Напоминания о парах',schedule_changes:'Изменения расписания',daily_summary:'Ежедневная сводка'})[k]||k),el('b','',v));p.append(r)});root.append(p,el('p','notice',a.notice));}catch(e){root.replaceChildren(errorBox(e.message))}}
 function openAccessGate(change=false){const configured=!!state.me?.access?.configured,admin=!!state.me?.is_admin,setup=!configured&&admin,banned=!!state.me?.access?.banned&&!admin,generate=setup||change;$('#accessTitle').textContent=setup?'Создайте код доступа':banned?'Доступ закрыт':'Код доступа';$('#accessDescription').textContent=setup?'Нажмите кнопку, чтобы создать случайный код. После сохранения скопируйте его и передайте нужным пользователям.':banned?'Администратор закрыл вам доступ. Обратитесь к нему, чтобы восстановить его.':change?'Система создаст новый случайный код. Можно оставить доступ уже вошедшим пользователям или попросить их ввести новый код.':!configured?'Администратор ещё не настроил код. Попробуйте позже.':'Введите код, который выдал администратор.';$('#accessCode').value='';$('#accessCode').hidden=generate;if(!generate)requestAnimationFrame(()=>$('#accessCode').focus({preventScroll:true}));$('#accessCode').hidden=generate;$('#accessCodeLabel').hidden=generate;$('#accessCodeHint').hidden=generate;$('#accessCode').required=!generate;$('#generatedCodeBlock').hidden=true;$('#accessCode').disabled=(!configured&&!admin)||banned;$('#accessSubmit').textContent=generate?'Сгенерировать новый код':'Войти';$('#accessSubmit').disabled=(!configured&&!admin)||banned;$('#preserveChoice').hidden=!generate;$('#preserveExisting').checked=false;$('#adminSetAccess').hidden=!admin||!configured||change||banned;$('#accessError').textContent='';$('#accessGate').dataset.mode=generate?'generate':'verify';$('#accessGate').hidden=false}
