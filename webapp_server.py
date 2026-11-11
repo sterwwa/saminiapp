@@ -231,6 +231,9 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         db.execute("ALTER TABLE registered_users ADD COLUMN bio TEXT NOT NULL DEFAULT ''")
     if "role" not in columns:
         db.execute("ALTER TABLE registered_users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
+    if "roles_json" not in columns:
+        db.execute("ALTER TABLE registered_users ADD COLUMN roles_json TEXT NOT NULL DEFAULT '[\"student\"]'")
+        db.execute("UPDATE registered_users SET roles_json = json_array(COALESCE(role, 'student'))")
     db.execute("CREATE TABLE IF NOT EXISTS access_settings (id INTEGER PRIMARY KEY CHECK (id = 1), salt TEXT NOT NULL, code_hash TEXT NOT NULL, version INTEGER NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS access_grants (telegram_id INTEGER PRIMARY KEY, version INTEGER NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS access_bans (telegram_id INTEGER PRIMARY KEY, banned_at TEXT NOT NULL)")
@@ -392,18 +395,29 @@ async def api_students(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                rows = db.execute("SELECT telegram_id, full_name, username, role FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
+                rows = db.execute("SELECT telegram_id, full_name, username, role, roles_json FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
                 result = []
                 for row in rows:
                     item = dict(row)
                     uid = int(item["telegram_id"])
+                    try:
+                        roles = json.loads(item.get("roles_json") or "[]")
+                    except (TypeError, json.JSONDecodeError):
+                        roles = []
+                    if not isinstance(roles, list):
+                        roles = []
+                    roles = [r for r in roles if r in {"student", "deputy", "starosta", "moderator"}]
+                    if not roles:
+                        roles = ["student"]
                     if uid in d.admin_ids:
+                        roles = ["support"]
                         item["role"] = "support"
+                    item["roles"] = roles
+                    item.pop("roles_json", None)
                     item["is_me"] = uid == viewer
                     result.append(item)
-                # Support, староста, заместитель, модератор, затем студенты.
                 priority = {"support": 0, "starosta": 1, "deputy": 2, "moderator": 3, "student": 4}
-                result.sort(key=lambda item: (priority.get(item["role"], 2), item["full_name"].casefold()))
+                result.sort(key=lambda item: (min((priority.get(r, 4) for r in item["roles"]), default=4), item["full_name"].casefold()))
                 return result
             finally:
                 db.close()
@@ -419,16 +433,29 @@ async def api_admin_update_role(request: web.Request) -> web.Response:
         body = await request.json()
     except (ValueError, json.JSONDecodeError):
         raise web.HTTPBadRequest(text="Некорректный запрос")
-    role = body.get("role") if isinstance(body, dict) and set(body) == {"role"} else None
-    if role not in {"student", "deputy", "starosta", "moderator"}:
-        raise web.HTTPBadRequest(text="Некорректная роль")
+    if not isinstance(body, dict):
+        raise web.HTTPBadRequest(text="Некорректный запрос")
+    if "roles" in body and set(body) == {"roles"} and isinstance(body["roles"], list):
+        roles = body["roles"]
+    elif "role" in body and set(body) == {"role"}:
+        roles = [] if body["role"] == "student" else [body["role"]]
+    else:
+        raise web.HTTPBadRequest(text="Передайте список ролей")
+    allowed = {"deputy", "starosta", "moderator"}
+    if len(roles) != len(set(roles)) or any(role not in allowed for role in roles):
+        raise web.HTTPBadRequest(text="Некорректный список ролей")
     if uid in d.admin_ids:
-        raise web.HTTPBadRequest(text="Роль модератора закреплена за владельцем приложения")
+        raise web.HTTPBadRequest(text="Роль разработчика закреплена за владельцем приложения")
+    normalized = roles or ["student"]
+    primary_role = next((r for r in ("starosta", "deputy", "moderator") if r in normalized), "student")
     async with d.users_lock:
         def update():
             db = _db_connect(d)
             try:
-                cur = db.execute("UPDATE registered_users SET role = ?, updated_at = ? WHERE telegram_id = ?", (role, datetime.now(timezone.utc).isoformat(timespec="seconds"), uid))
+                cur = db.execute(
+                    "UPDATE registered_users SET role = ?, roles_json = ?, updated_at = ? WHERE telegram_id = ?",
+                    (primary_role, json.dumps(normalized, ensure_ascii=False), datetime.now(timezone.utc).isoformat(timespec="seconds"), uid)
+                )
                 db.commit()
                 return cur.rowcount > 0
             finally:
@@ -436,7 +463,7 @@ async def api_admin_update_role(request: web.Request) -> web.Response:
         exists = await asyncio.to_thread(update)
     if not exists:
         raise web.HTTPNotFound(text="Студент не найден")
-    return web.json_response({"saved": True, "telegram_id": uid, "role": role})
+    return web.json_response({"saved": True, "telegram_id": uid, "roles": normalized})
 
 async def api_admin_update_user(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
@@ -569,6 +596,7 @@ async def api_me(request: web.Request) -> web.Response:
         "group": d.group, "timezone": d.tz_name, "preferences": prefs, "is_admin": require_admin(request, d),
         "registration": {"registered": registered is not None, "full_name": registered["full_name"] if registered else ""},
         "role": "support" if uid in d.admin_ids else (registered["role"] if registered else "student"),
+        "roles": ["support"] if uid in d.admin_ids else (json.loads(registered["roles_json"]) if registered and "roles_json" in registered.keys() else [registered["role"] if registered else "student"]),
         "bio": registered["bio"] if registered and "bio" in registered.keys() else "",
         "access": access,
         "notifications_note": "Настройки сохраняются в профиле. Для фоновых push-уведомлений нужна отдельная серверная рассылка.",
