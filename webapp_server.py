@@ -100,6 +100,14 @@ async def health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
+async def api_simulation_status(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    state = await asyncio.to_thread(_read_simulation_state, d)
+    simulation = ({"active": True, "date": state.get("date"), "old": state.get("old"), "new": state.get("new")}
+                  if state.get("active") and state.get("date") and state.get("old") and state.get("new") else None)
+    return web.json_response({"simulation": simulation})
+
+
 def _day_json(d: Deps, day: date, lessons: list[dict], error: bool, cached: bool = False) -> dict:
     times = d.bells.day_times(day)
     out = []
@@ -1345,6 +1353,7 @@ def create_app(deps: Deps) -> web.Application:
     app["deps"] = deps
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
+    app.router.add_get("/api/simulation", api_simulation_status)
     app.router.add_get("/api/day", api_day)
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
