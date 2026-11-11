@@ -915,24 +915,23 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
                 db.close()
         sessions, absent_by_lesson = await asyncio.to_thread(read_report)
 
+    absent_names = []
+    seen_names = set()
+    for lesson_number, _subject in sessions:
+        for name in absent_by_lesson.get(lesson_number, []):
+            if name not in seen_names:
+                seen_names.add(name)
+                absent_names.append(name)
+
     lines = [
-        f"📋 Посещаемость за {report_day:%d.%m.%Y}",
-        f"Группа: {d.group}",
-        ""
+        f"📋 Отсутствующие за {report_day:%d.%m.%Y}",
+        f"Группа: {d.group}:"
     ]
-    if not sessions:
-        lines.append("В расписании на эту дату пары не найдены.")
+    if absent_names:
+        lines.extend(f"• {name}" for name in absent_names)
     else:
-        for lesson_number, subject in sessions:
-            lines.append(f"📚 {lesson_number}-я пара — {subject or 'Предмет не указан'}")
-            names = absent_by_lesson.get(lesson_number, [])
-            if names:
-                lines.append("Отсутствовали:")
-                lines.extend(f"• {name}" for name in names)
-            else:
-                lines.append("Отсутствующих нет.")
-            lines.append("")
-    message = "\n".join(lines).strip()
+        lines.append("Отсутствующих нет.")
+    message = "\\n".join(lines).strip()
 
     try:
         async with ClientSession(timeout=ClientTimeout(total=12)) as session:
