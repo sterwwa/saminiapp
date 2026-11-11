@@ -108,11 +108,8 @@ async def get_miniapp_lessons(day: date) -> list[dict]:
 
 
 def keyboard() -> InlineKeyboardMarkup:
-    rows = [[
-        InlineKeyboardButton(text="📅 Сегодня", callback_data="v:today"),
-        InlineKeyboardButton(text="➡️ Завтра", callback_data="v:tomorrow"),
-        InlineKeyboardButton(text="🗓 Неделя", callback_data="v:week"),
-    ]]
+    # В приветствии оставляем только переход в Mini App.
+    rows = []
     if MINIAPP_LINK:  # в беседах web_app-кнопки запрещены, поэтому обычная ссылка t.me
         rows.append([InlineKeyboardButton(text="📱 Открыть приложение", url=MINIAPP_LINK)])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -156,21 +153,14 @@ def is_admin(m: Message) -> bool:
 
 # ---------------------------------------------------------------- команды
 HELP = (
-    "👋 Привет! Я присылаю расписание группы <b>{g}</b> с сайта Гусевского политехнического техникума.\n\n"
-    "/today — расписание на сегодня\n"
-    "/tomorrow — расписание на завтра\n"
-    "/week — расписание на неделю\n"
-    "/schedule — ближайший учебный день\n"
-    "/next — ближайшая пара и сколько до неё осталось\n"
-    "/app — открыть мини-приложение\n\n"
-    "Каждый день в {h}:00 я автоматически отправляю в беседу расписание на следующий день "
-    "и сообщаю, если оно изменилось."
+    "Привет! Это бот-помощник старосты: список группы, расписание и учёт посещаемости — всё в приложении.\n\n"
+    "Нажми кнопку ниже, чтобы открыть его."
 )
 
 
 @dp.message(Command("start"))
 async def cmd_start(m: Message) -> None:
-    await m.answer(HELP.format(g=GROUP_NAME, h=SEND_HOUR), reply_markup=keyboard())
+    await m.answer(HELP, reply_markup=keyboard())
 
 
 async def send_view(chat_id: int, what: str) -> None:
