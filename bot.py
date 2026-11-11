@@ -545,8 +545,7 @@ async def main() -> None:
     dp.message.outer_middleware(PrivateIncomingCleanup())
     bot.session.middleware(cleanup_private_outgoing)
     await bot.set_my_commands([
-        BotCommand(command="start", description="Приветствие"),
-        BotCommand(command="c", description="Очистить чат и показать приветствие"),
+        BotCommand(command="c", description="Очистить чат и отправить приветствие"),
     ])
 
     global scheduler
