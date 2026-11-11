@@ -487,6 +487,24 @@ body{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
 
 /* Invite sheet: only copy-code and regenerate actions */
 .invite-content .invite-actions{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:20px}.invite-content .invite-secondary,.invite-content .invite-danger{min-height:54px;border-radius:16px;font-size:14px;font-weight:750}.invite-content .invite-secondary{border:1px solid var(--line);background:var(--panel);color:var(--text)}.invite-content .invite-secondary:disabled{opacity:.4}.invite-content .invite-danger{border:1px solid rgba(240,80,90,.48);background:rgba(240,80,90,.09);color:#ff626d}
+
+/* Standalone app onboarding bottom sheet — reuses dashboard theme tokens */
+.standalone-sheet-backdrop{position:fixed;inset:0;z-index:1200;display:flex;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.66);opacity:0;transition:opacity .24s ease;padding-top:env(safe-area-inset-top)}
+.standalone-sheet-backdrop.is-open{opacity:1}
+.standalone-sheet{width:100%;max-width:620px;max-height:min(88dvh,760px);overflow-y:auto;overscroll-behavior:contain;background:var(--panel);color:var(--text);border:1px solid var(--line);border-bottom:0;border-radius:24px 24px 0 0;padding:12px 24px calc(24px + env(safe-area-inset-bottom));box-shadow:var(--shadow);transform:translateY(100%);transition:transform .28s cubic-bezier(.2,.75,.25,1)}
+.standalone-sheet.is-open{transform:translateY(0)}
+.standalone-sheet-top{height:28px;display:flex;align-items:center;justify-content:center;position:relative;margin-bottom:20px}
+.standalone-sheet-handle{width:50px;height:4px;border-radius:99px;background:var(--muted);opacity:.36}
+.standalone-sheet-close{position:absolute;right:-8px;top:-2px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;background:var(--panel2);color:var(--muted);font-size:25px;line-height:1}
+.standalone-sheet-title{font-size:23px;line-height:1.2;font-weight:850;letter-spacing:-.45px;color:var(--text);margin:0 0 12px}
+.standalone-sheet-description{font-size:14px;line-height:1.6;color:var(--muted);margin:0 0 22px}
+.standalone-sheet-steps{list-style:none;counter-reset:sheet-step;padding:0;margin:0 0 26px;display:grid;gap:17px}
+.standalone-sheet-steps li{counter-increment:sheet-step;display:flex;align-items:flex-start;gap:11px;color:var(--text);font-size:15px;line-height:1.45;font-weight:650}
+.standalone-sheet-steps li:before{content:counter(sheet-step) ".";color:var(--accent);font-weight:850;min-width:17px}
+.standalone-sheet-cta{width:100%;min-height:54px;border-radius:15px;background:var(--accent);color:var(--accentText);display:flex;align-items:center;justify-content:center;gap:10px;font-size:15px;font-weight:800;box-shadow:0 8px 22px rgba(139,92,246,.22)}
+.standalone-sheet-cta svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.standalone-sheet-close:focus-visible,.standalone-sheet-cta:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+@media(prefers-reduced-motion:reduce){.standalone-sheet-backdrop,.standalone-sheet{transition:none}}
 </style>
 </head>
 <body>
@@ -853,11 +871,39 @@ function renderSettings(){
  notify.append(settingsRow('M12 19l9-7-9-7-9 7 9 7z','Куда присылать','Личные сообщения Telegram','Telegram',()=>openSettingsSheet('Куда присылать','Уведомления отправляются в личный чат с ботом. Сначала откройте @vasya_sa_bot и нажмите Start.')));
  [['daily_summary','Расписание на завтра','Каждый день в 20:00'],['schedule_changes','Изменения расписания','Переносы, отмены и новые пары'],['lesson_reminders','Напоминания о парах','Напоминания о скором начале занятий']].forEach(([key,label,desc])=>{const row=el('div','settings-row'),ico=el('span','settings-row-icon');ico.innerHTML=settingsIcon('M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4M12 8v4l3 2');const copy=el('span','settings-row-copy');copy.append(el('b','',label),el('small','',desc));const sw=el('input','settings-switch');sw.type='checkbox';sw.checked=!!prefs[key];sw.setAttribute('aria-label',label);sw.onchange=()=>savePref(key,sw.checked);row.append(ico,copy,sw);notify.append(row)});
  const app=settingsGroup(root,'Приложение');
- app.append(settingsRow('M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M11 18h2','Перейти в приложение','Если Telegram тормозит','',()=>{const url=location.href;if(tg?.openLink)tg.openLink(url);else window.open(url,'_blank','noopener,noreferrer')}));
+ app.append(settingsRow('M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2M11 18h2','Перейти в приложение','Открыть отдельно от Telegram','',()=>openStandaloneAppSheet()));
  const help=settingsGroup(root,'Помощь');
  help.append(settingsRow('M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.5 9a2.5 2.5 0 1 1 4.5 1.5c-1.2.8-2 1.2-2 2.5M12 17h.01','Поддержка','Написать @met1sa','',()=>{const url='https://t.me/met1sa';if(tg?.openTelegramLink)tg.openTelegramLink(url);else window.open(url,'_blank','noopener,noreferrer')}));
  const appearance=settingsGroup(root,'Оформление'),row=el('div','settings-row'),ico=el('span','settings-row-icon');ico.innerHTML=settingsIcon('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 3v18');const copy=el('span','settings-row-copy');copy.append(el('b','','Тема приложения'),el('small','','Тёмная или светлая тема'));const select=el('select','role-select');select.style.maxWidth='130px';[['dark','Тёмная'],['light','Светлая']].forEach(([v,l])=>{const o=el('option','',l);o.value=v;select.append(o)});select.value=['dark','light'].includes(themePreference)?themePreference:'dark';select.onchange=()=>{applyTheme(select.value);toast(select.value==='dark'?'Тёмная тема включена':'Светлая тема включена')};row.append(ico,copy,select);appearance.append(row);
  updateFloatingSchedule();
+}
+function openStandaloneAppSheet(){
+ const overlay=el('div','standalone-sheet-backdrop'),sheet=el('section','standalone-sheet');
+ overlay.setAttribute('role','presentation');
+ sheet.setAttribute('role','dialog');sheet.setAttribute('aria-modal','true');sheet.setAttribute('aria-labelledby','standaloneSheetTitle');
+ const handle=el('div','standalone-sheet-handle'),close=el('button','standalone-sheet-close','×');
+ close.type='button';close.setAttribute('aria-label','Закрыть');
+ const top=el('div','standalone-sheet-top');top.append(handle,close);
+ const heading=el('h2','standalone-sheet-title','Приложение без Telegram');heading.id='standaloneSheetTitle';
+ const description=el('p','standalone-sheet-description','Пользуйтесь «Староста бот» как приложением на телефоне — без Telegram. Группа, история и подписка перенесутся.');
+ const steps=el('ol','standalone-sheet-steps');
+ ['Нажмите «Открыть приложение»','Войдите по почте','Готово — всё ваше уже там'].forEach(label=>steps.append(el('li','',label)));
+ const action=el('button','standalone-sheet-cta');
+ action.type='button';action.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3h7v7M21 3l-9 9M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg><span>Открыть приложение</span>';
+ sheet.append(top,heading,description,steps,action);overlay.append(sheet);
+ let closing=false;
+ const closeSheet=()=>{if(closing)return;closing=true;overlay.classList.remove('is-open');sheet.classList.remove('is-open');setTimeout(()=>overlay.remove(),260);document.removeEventListener('keydown',onKey)};
+ const onKey=e=>{if(e.key==='Escape')closeSheet()};
+ close.onclick=closeSheet;overlay.addEventListener('click',e=>{if(e.target===overlay)closeSheet()});
+ let touchStart=0,touchCurrent=0;
+ sheet.addEventListener('touchstart',e=>{touchStart=e.touches[0]?.clientY||0;touchCurrent=touchStart},{passive:true});
+ sheet.addEventListener('touchmove',e=>{touchCurrent=e.touches[0]?.clientY||touchCurrent;if(touchCurrent-touchStart>0)sheet.style.transform='translateY('+Math.min(160,touchCurrent-touchStart)+'px)'},{passive:true});
+ sheet.addEventListener('touchend',()=>{if(touchCurrent-touchStart>90)closeSheet();else sheet.style.transform='';touchStart=touchCurrent=0},{passive:true});
+ action.onclick=()=>{const url=location.href;if(tg?.openLink)tg.openLink(url);else window.open(url,'_blank','noopener,noreferrer')};
+ document.body.append(overlay);document.addEventListener('keydown',onKey);
+ requestAnimationFrame(()=>{overlay.classList.add('is-open');sheet.classList.add('is-open')});
+ close.focus({preventScroll:true});
+ return overlay;
 }
 function openInviteSheet(){
  const wrap=el('div','invite-content'),code=el('div','settings-sheet-code','ЗАГРУЗКА…'),hint=el('p','','Загружаем действующий код приглашения. Уже зарегистрированные пользователи сохранят доступ.');
