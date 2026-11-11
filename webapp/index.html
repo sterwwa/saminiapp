@@ -172,7 +172,7 @@ async function renderJournal(){
    const raw=String(value||'').trim(),key=raw.toLocaleLowerCase('ru-RU').replace(/ё/g,'е');
    if(/\\bвпр\\b/i.test(raw)||key.includes('впр'))return '';
    if(key.includes('иностранный язык')||key.includes('иностарнный язык'))return 'Иностранный язык';
-   if(key.replace(/[^а-яa-z0-9]/gi,'').startsWith('технологиифизическогоуровня'))return 'Технологии физического уровня';
+   if(/^технологи[яи]физическогоуровня/.test(key.replace(/[^а-яa-z0-9]/gi,'')))return 'Технологии физического уровня';
    return raw;
   };
   const load=async()=>{
