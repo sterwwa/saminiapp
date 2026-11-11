@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta, timezone, tzinfo
 from pathlib import Path
 from typing import Awaitable, Callable
 
-from aiohttp import web
+from aiohttp import ClientSession, ClientTimeout, web
 
 from bells import Bells
 from schedule import ScheduleError
@@ -865,6 +865,77 @@ async def api_journal_history(request: web.Request) -> web.Response:
         "can_edit": _journal_can_edit(d, uid)})
 
 
+async def api_journal_send_today_report(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    if not _journal_can_edit(d, uid):
+        return web.json_response({"error": "forbidden", "message": "Отправлять отчёт могут только староста и зам. старосты."}, status=403)
+
+    today = datetime.now(d.tz).date()
+    async with d.users_lock:
+        def read_report():
+            db = _db_connect(d)
+            try:
+                rows = db.execute("""
+                    SELECT js.lesson_number, js.subject, ru.full_name
+                    FROM journal_sessions js
+                    LEFT JOIN journal_absences ja
+                      ON ja.lesson_date = js.lesson_date AND ja.lesson_number = js.lesson_number
+                    LEFT JOIN registered_users ru ON ru.telegram_id = ja.student_id
+                    WHERE js.lesson_date = ? AND js.subject <> ''
+                    ORDER BY CAST(js.lesson_number AS INTEGER), ru.full_name COLLATE NOCASE
+                """, (today.isoformat(),)).fetchall()
+                report = {}
+                for row in rows:
+                    number = str(row["lesson_number"])
+                    item = report.setdefault(number, {"subject": str(row["subject"]), "names": []})
+                    if row["full_name"]:
+                        item["names"].append(str(row["full_name"]))
+                return report
+            finally:
+                db.close()
+        report = await asyncio.to_thread(read_report)
+
+    lines = [f"📋 Отсутствующие за {today:%d.%m.%Y}", f"Группа: {d.group}", ""]
+    if not report:
+        lines.append("На сегодня в сохранённом расписании занятий нет.")
+    else:
+        any_absent = False
+        for number, item in report.items():
+            lines.append(f"{number}-я пара — {item['subject']}")
+            if item["names"]:
+                any_absent = True
+                lines.extend(f"• {name}" for name in item["names"])
+            else:
+                lines.append("• Отсутствующих нет")
+            lines.append("")
+        if not any_absent:
+            lines.append("За сегодня отсутствующих нет.")
+    message = "\n".join(lines).strip()
+
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=12)) as session:
+            async with session.post(
+                f"https://api.telegram.org/bot{d.token}/sendMessage",
+                json={"chat_id": uid, "text": message}
+            ) as response:
+                result = await response.json(content_type=None)
+        if not result.get("ok"):
+            description = str(result.get("description") or "")
+            if "chat not found" in description.lower() or "bot can't initiate" in description.lower():
+                return web.json_response({
+                    "error": "bot_not_started",
+                    "message": "Сначала откройте @vasya_sa_bot и нажмите /start. После этого повторите отправку отчёта."
+                }, status=400)
+            log.warning("Telegram не отправил отчёт посещаемости пользователю %s: %s", uid, description)
+            return web.json_response({"error": "telegram_send_failed", "message": "Telegram не смог отправить сообщение. Попробуйте позже."}, status=502)
+    except Exception:
+        log.exception("Не удалось отправить отчёт посещаемости пользователю %s", uid)
+        return web.json_response({"error": "telegram_unavailable", "message": "Не удалось связаться с Telegram. Попробуйте позже."}, status=502)
+
+    return web.json_response({"sent": True, "date": today.isoformat()})
+
+
 async def api_journal_save(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     uid = int((request.get("user") or {}).get("id", 0))
@@ -960,6 +1031,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/students", api_students)
     app.router.add_get("/api/journal", api_journal_get)
     app.router.add_get("/api/journal/history", api_journal_history)
+    app.router.add_post("/api/journal/send-today-report", api_journal_send_today_report)
     app.router.add_post("/api/journal", api_journal_save)
     app.router.add_post("/api/access", api_access)
     app.router.add_post("/api/admin/access-code", api_admin_access_code)
