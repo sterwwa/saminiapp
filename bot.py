@@ -493,7 +493,7 @@ async def webpush_reminder_tick() -> None:
         log.exception("Не удалось подготовить расписание для Web Push")
         return
     reminder_minutes = max(1, min(60, env_int("WEBPUSH_REMIND_MINUTES", 15)))
-    for lesson, start in tl:
+    for lesson, start, _end in tl:
         seconds_left = (start - n).total_seconds()
         if not 0 < seconds_left <= reminder_minutes * 60:
             continue
