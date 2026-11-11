@@ -1173,6 +1173,13 @@ async function togglePushNotifications(){
   toast('Push-уведомления включены на этом устройстве');await refreshPushSettingsRow();
  }catch(e){toast(e.message||'Не удалось включить push-уведомления');await refreshPushSettingsRow()}
 }
+async function testPushNotification(){
+ try{
+  const result=await api('/api/push/test',{method:'POST',body:JSON.stringify({})});
+  if(result.sent){toast('Тестовое push-уведомление отправлено');}
+  else toast(result.message||'Не удалось отправить тестовое уведомление');
+ }catch(e){toast(e.message||'Ошибка отправки тестового уведомления')}
+}
 function renderSettings(){
  const root=$('#settingsContent');root.replaceChildren();
  const group=state.me?.group||GROUP||'—',timezone=state.me?.timezone||TZ||'Не указан';
@@ -1182,6 +1189,7 @@ function renderSettings(){
  grp.append(settingsRow('M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18M12 7v5l3 2','Часовой пояс','Время расписания группы',timezone,()=>openSettingsSheet('Часовой пояс',`Сейчас используется часовой пояс группы: ${timezone}. Изменение часового пояса доступно администратору.`)));
  const notify=settingsGroup(root,'Уведомления'),prefs=state.me?.preferences||{lesson_reminders:true,schedule_changes:true,daily_summary:true};
   const pushRow=settingsRow('M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4','Push на устройстве','Уведомления на заблокированном экране и при закрытом приложении','Проверка…',()=>togglePushNotifications());pushRow.id='pushNotificationsRow';notify.append(pushRow);refreshPushSettingsRow();
+  notify.append(settingsRow('M12 5v14m-7-7h14','Проверить уведомления','Отправить тестовое push на это устройство','Отправить',()=>testPushNotification()));
  notify.append(settingsRow('M12 19l9-7-9-7-9 7 9 7z','Куда присылать','Личные сообщения Telegram','Telegram',()=>openSettingsSheet('Куда присылать','Уведомления отправляются в личный чат с ботом. Сначала откройте @vasya_sa_bot и нажмите Start.')));
  [['daily_summary','Расписание на завтра','Каждый день в 20:00'],['schedule_changes','Изменения расписания','Переносы, отмены и новые пары'],['lesson_reminders','Напоминания о парах','Напоминания о скором начале занятий']].forEach(([key,label,desc])=>{const row=el('div','settings-row'),ico=el('span','settings-row-icon');ico.innerHTML=settingsIcon('M12 3v2m0 14v2M3 12h2m14 0h2M5.6 5.6 7 7m10 10 1.4 1.4M18.4 5.6 17 7M7 17l-1.4 1.4M12 8v4l3 2');const copy=el('span','settings-row-copy');copy.append(el('b','',label),el('small','',desc));const sw=el('input','settings-switch');sw.type='checkbox';sw.checked=!!prefs[key];sw.setAttribute('aria-label',label);sw.onchange=()=>savePref(key,sw.checked);row.append(ico,copy,sw);notify.append(row)});
  if(tg?.initData){
