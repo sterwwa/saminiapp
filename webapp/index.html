@@ -343,7 +343,7 @@ async function renderJournal(){
  }catch(e){if(seq===journalRenderSeq)root.replaceChildren(errorBox(e.message))}
 }
 async function copyProfileValue(value,label){try{await navigator.clipboard.writeText(String(value));toast(label+' скопирован')}catch{toast('Не удалось скопировать')}}
-async function editProfileBio(){const current=state.me?.bio||'';const value=window.prompt('О себе (до 70 символов)',current);if(value===null)return;const bio=value.trim();if(bio.length>70){toast('Максимум 70 символов');return}try{const data=await api('/api/profile',{method:'POST',body:JSON.stringify({bio})});state.me.bio=data.bio;renderProfile();toast('Описание профиля сохранено')}catch(e){toast(e.message||'Не удалось сохранить описание')}}
+async function editProfileBio(){openProfileEditor()}
 
 async function openProfileEditor(){
  const current=state.me||{},reg=current.registration||{},tu=tg?.initDataUnsafe?.user||{};
@@ -420,13 +420,13 @@ function renderProfile(){
  section('Личные данные');
  box=card();
  line(box,'♙','Имя в Telegram',tgName||'Не указано',null,!tgName);
- line(box,'✎','ФИО в приложении',registered.full_name||'Не заполнено',()=>openRegistration(true),!registered.full_name);
+ line(box,'✎','ФИО в приложении',registered.full_name||'Не заполнено',openProfileEditor,!registered.full_name);
+ line(box,'▦','Дата рождения',state.me?.birth_date?new Date(state.me.birth_date+'T00:00:00').toLocaleDateString('ru-RU'):'Не указана',openProfileEditor,!state.me?.birth_date);
  line(box,'文','Язык интерфейса',(u.language_code||'ru').toUpperCase(),null);
  section('Учебный профиль');
  box=card();
  line(box,'▤','Группа',state.me?.group||GROUP,null);
  line(box,'✓','Статус регистрации',registered.registered?'Завершена':'Не завершена',null,!registered.registered);
- line(box,'▦','Дата рождения',state.me?.birth_date?new Date(state.me.birth_date+'T00:00:00').toLocaleDateString('ru-RU'):'Не указана',openProfileEditor,!state.me?.birth_date);
  root.append(el('p','tg-native-note','Фото, ФИО, описание и дата рождения относятся только к профилю приложения. Изменения не меняют аккаунт Telegram.'));
 }
 async function renderStudents(){
