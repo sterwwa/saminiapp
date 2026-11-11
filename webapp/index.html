@@ -398,6 +398,24 @@ body{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
  transition:background .22s ease,border-color .22s ease,box-shadow .22s ease,transform .22s ease;
 }
 @media(prefers-reduced-motion:reduce){.card,.lesson-card,.status,.empty,.errorbox,.hero,.bottom,.iconbtn,.primary,.seg,.tab,.student-profile-sheet{transition:none}}
+
+/* Restore the original violet accent throughout the glass interface */
+:root,[data-theme="dark"],[data-theme="light"]{--accent:#8b5cf6;--accentText:#fff}
+:root[data-theme="dark"] .tab.active{
+ color:#fff!important;
+ background:rgba(139,92,246,.28)!important;
+ box-shadow:inset 0 1px 0 rgba(255,255,255,.18),0 3px 16px rgba(139,92,246,.22)!important;
+}
+:root[data-theme="dark"] .tab.active .ico{filter:drop-shadow(0 0 7px rgba(167,139,250,.55))!important}
+:root[data-theme="dark"] input:focus,
+:root[data-theme="dark"] textarea:focus,
+:root[data-theme="dark"] select:focus{border-color:rgba(139,92,246,.72)!important;box-shadow:0 0 0 3px rgba(139,92,246,.14)!important}
+:root[data-theme="dark"] .day.sel,
+:root[data-theme="dark"] .seg button[aria-selected=true],
+:root[data-theme="dark"] .primary,
+:root[data-theme="dark"] .student-profile-action.primary,
+:root[data-theme="dark"] .journal-save{background:rgba(139,92,246,.86)!important}
+
 </style>
 </head>
 <body>
