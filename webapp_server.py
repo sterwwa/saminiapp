@@ -1007,6 +1007,88 @@ async def api_journal_save(request: web.Request) -> web.Response:
     return web.json_response({"saved": True, "date": day.isoformat(), "lesson_number": lesson_number, "absent_count": len(absent_ids)})
 
 
+async def api_journal_bulk_save(request: web.Request) -> web.Response:
+    """Сохраняет посещаемость всех пар выбранной даты одной транзакцией."""
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    if not _journal_can_edit(d, uid):
+        return web.json_response({"error": "forbidden", "message": "Отмечать посещаемость могут только староста и зам. старосты."}, status=403)
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        raise web.HTTPBadRequest(text="Ожидается JSON")
+    if not isinstance(body, dict) or set(body) != {"date", "sessions"} or not isinstance(body["sessions"], list):
+        raise web.HTTPBadRequest(text="Передайте дату и список пар с посещаемостью")
+    try:
+        day = date.fromisoformat(body["date"])
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="Некорректная дата")
+    sessions = body["sessions"]
+    if not sessions or len(sessions) > 20:
+        raise web.HTTPBadRequest(text="Нет пар для сохранения или слишком много пар")
+    normalized = []
+    all_absent_ids = set()
+    seen_numbers = set()
+    for item in sessions:
+        if not isinstance(item, dict) or set(item) != {"lesson_number", "absent_ids"}:
+            raise web.HTTPBadRequest(text="Некорректные данные пары")
+        lesson_number = str(item["lesson_number"]).strip()
+        absent_ids = item["absent_ids"]
+        if not lesson_number or len(lesson_number) > 12 or lesson_number in seen_numbers:
+            raise web.HTTPBadRequest(text="Некорректный или повторяющийся номер пары")
+        if not isinstance(absent_ids, list) or len(absent_ids) > 200:
+            raise web.HTTPBadRequest(text="Некорректный список отсутствующих")
+        if any(type(value) is not int or value <= 0 for value in absent_ids) or len(absent_ids) != len(set(absent_ids)):
+            raise web.HTTPBadRequest(text="Некорректный список студентов")
+        seen_numbers.add(lesson_number)
+        all_absent_ids.update(absent_ids)
+        normalized.append((lesson_number, absent_ids))
+    async with d.users_lock:
+        def save_all():
+            db = _db_connect(d)
+            try:
+                placeholders = ",".join("?" for _ in seen_numbers)
+                found = {str(row["lesson_number"]) for row in db.execute(
+                    f"SELECT lesson_number FROM journal_sessions WHERE lesson_date=? AND subject<>'' AND lesson_number IN ({placeholders})",
+                    (day.isoformat(), *seen_numbers)
+                ).fetchall()}
+                if found != seen_numbers:
+                    raise ValueError("Одна или несколько пар не найдены в истории расписания")
+                if all_absent_ids:
+                    ids_placeholders = ",".join("?" for _ in all_absent_ids)
+                    known = {int(row["telegram_id"]) for row in db.execute(
+                        f"SELECT telegram_id FROM registered_users WHERE telegram_id IN ({ids_placeholders})",
+                        tuple(all_absent_ids)
+                    ).fetchall() if int(row["telegram_id"]) not in d.admin_ids}
+                    if known != all_absent_ids:
+                        raise ValueError("В списке есть неизвестные студенты")
+                now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                for lesson_number, absent_ids in normalized:
+                    db.execute(
+                        "UPDATE journal_sessions SET marked_by=?, updated_at=? WHERE lesson_date=? AND lesson_number=?",
+                        (uid, now, day.isoformat(), lesson_number)
+                    )
+                    db.execute(
+                        "DELETE FROM journal_absences WHERE lesson_date=? AND lesson_number=?",
+                        (day.isoformat(), lesson_number)
+                    )
+                    db.executemany(
+                        "INSERT INTO journal_absences (lesson_date, lesson_number, student_id, marked_by, updated_at) VALUES (?, ?, ?, ?, ?)",
+                        [(day.isoformat(), lesson_number, student_id, uid, now) for student_id in absent_ids]
+                    )
+                db.commit()
+            except Exception:
+                db.rollback()
+                raise
+            finally:
+                db.close()
+        try:
+            await asyncio.to_thread(save_all)
+        except ValueError as e:
+            raise web.HTTPBadRequest(text=str(e))
+    return web.json_response({"saved": True, "date": day.isoformat(), "sessions_saved": len(normalized)})
+
+
 async def api_preferences(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     user = request.get("user") or {}
@@ -1040,6 +1122,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/journal/history", api_journal_history)
     app.router.add_post("/api/journal/send-today-report", api_journal_send_today_report)
     app.router.add_post("/api/journal", api_journal_save)
+    app.router.add_post("/api/journal/bulk", api_journal_bulk_save)
     app.router.add_post("/api/access", api_access)
     app.router.add_post("/api/admin/access-code", api_admin_access_code)
     app.router.add_get("/api/admin/overview", api_admin_overview)
