@@ -88,6 +88,34 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}button
 
 /* Attendance history matrix */
 .journal-filters{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin:0 0 14px}.journal-filter{display:flex;flex-direction:column;gap:5px;color:var(--muted);font-size:11px;font-weight:750}.journal-filter:last-child{grid-column:1/-1}.journal-date,.journal-select{width:100%;min-width:0;padding:11px 10px;border:1px solid var(--line);border-radius:12px;background:var(--panel);color:var(--text);font:inherit;font-size:13px}.journal-table-wrap{width:100%;overflow:auto;border:1px solid var(--line);border-radius:15px;background:var(--panel);overscroll-behavior-x:contain}.journal-matrix{border-collapse:separate;border-spacing:0;min-width:100%;width:max-content;font-size:12px}.journal-matrix th,.journal-matrix td{padding:8px 7px;border-bottom:1px solid var(--line);border-right:1px solid var(--line);text-align:center}.journal-matrix tr:last-child th,.journal-matrix tr:last-child td{border-bottom:0}.journal-matrix th:last-child,.journal-matrix td:last-child{border-right:0}.journal-name-head,.journal-student-name{position:sticky;left:0;z-index:2;background:var(--panel);text-align:left!important;min-width:132px;max-width:160px}.journal-name-head{z-index:3;color:var(--muted)}.journal-student-name{font-weight:700;overflow-wrap:anywhere}.journal-session-head{min-width:76px;max-width:110px}.journal-session-head b,.journal-session-head small{display:block}.journal-session-head b{font-size:12px}.journal-session-head small{font-size:10px;color:var(--muted);font-weight:500;margin-top:2px;max-width:100px;overflow-wrap:anywhere}.journal-mark{min-width:48px;padding:7px 8px;border-radius:9px;background:color-mix(in srgb,var(--good) 13%,var(--panel));color:var(--good);font-size:11px;font-weight:850}.journal-mark.absent{background:color-mix(in srgb,var(--bad) 15%,var(--panel));color:var(--bad)}.journal-mark:disabled{opacity:1}.journal-save.is-idle{opacity:.5}
+
+/* Telegram-like profile layout */
+.tg-native-hero{display:flex;flex-direction:column;align-items:center;text-align:center;padding:24px 16px 18px;margin:0 -2px 4px;background:transparent;border:0;border-radius:0}
+.tg-native-avatar{width:112px;height:112px;border-radius:50%;display:grid;place-items:center;overflow:hidden;background:linear-gradient(145deg,#9b72f5,#5830a9);color:#fff;font-size:42px;font-weight:750;box-shadow:0 2px 12px #0002}
+.tg-native-avatar img{width:100%;height:100%;object-fit:cover}
+.tg-native-name{margin:13px 0 0;color:var(--text);font-size:22px;line-height:1.25;font-weight:750;letter-spacing:-.3px;overflow-wrap:anywhere}
+.tg-native-username{margin-top:4px;color:var(--muted);font-size:14px}
+.tg-native-group{margin-top:9px;color:var(--muted);font-size:13px}
+.tg-native-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:7px 0 22px}
+.tg-native-action{min-width:0;min-height:76px;border:1px solid var(--line);border-radius:13px;background:var(--panel);color:var(--text);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:7px;font:inherit;font-size:12px;font-weight:650}
+.tg-native-action:active{background:var(--panel2);transform:scale(.98)}
+.tg-native-action-icon{width:27px;height:27px;display:grid;place-items:center;color:var(--accent);font-size:22px;line-height:1}
+.tg-native-section{margin:18px 4px 7px;color:var(--muted);font-size:13px;font-weight:650}
+.tg-native-card{overflow:hidden;margin-bottom:9px;border-radius:13px;background:var(--panel);border:1px solid var(--line);padding:0 13px}
+.tg-native-row{width:100%;min-height:61px;display:flex;align-items:center;gap:13px;padding:9px 0;border:0;border-bottom:1px solid var(--line);background:transparent;color:var(--text);text-align:left;font:inherit}
+.tg-native-row:last-child{border-bottom:0}
+.tg-native-row:disabled{opacity:1;cursor:default}
+.tg-native-row-icon{width:25px;flex:none;text-align:center;color:var(--muted);font-size:19px}
+.tg-native-row-body{min-width:0;flex:1;display:flex;flex-direction:column;gap:4px}
+.tg-native-row-label{font-size:12px;color:var(--muted)}
+.tg-native-row-value{font-size:14px;line-height:1.35;font-weight:550;overflow-wrap:anywhere}
+.tg-native-row-value.is-subtle{color:var(--muted);font-weight:450}
+.tg-native-row-chevron{flex:none;color:var(--muted);font-size:22px;font-weight:300}
+.tg-native-row.is-clickable{cursor:pointer}
+.tg-native-row.is-clickable:active{opacity:.65}
+.tg-native-note{margin:12px 7px 5px;color:var(--muted);font-size:11px;line-height:1.5;text-align:center}
+@media(max-width:360px){.tg-native-avatar{width:96px;height:96px}.tg-native-name{font-size:20px}.tg-native-actions{gap:6px}.tg-native-action{font-size:11px}}
+
 </style>
 </head>
 <body>
@@ -303,61 +331,52 @@ function renderProfile(){
  const initial=(fullName.trim().charAt(0)||'П').toLocaleUpperCase('ru');
  const tu=tg?.initDataUnsafe?.user||{};
  const photo=typeof tu.photo_url==='string'&&tu.photo_url.startsWith('https://')?tu.photo_url:'';
-
- const header=el('section','tg-profile-head');
- const avatar=el('div','tg-profile-avatar',initial);
- if(photo){
-  const img=el('img');img.src=photo;img.alt='Фото профиля';img.referrerPolicy='no-referrer';
-  img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img);
- }
- const identity=el('div','tg-profile-identity');
- identity.append(el('h2','',fullName),el('div','tg-profile-username',username));
- const status=el('div','tg-profile-status');status.append(el('i'),document.createTextNode('Профиль приложения'));
- header.append(avatar,identity,status);
- if(state.me?.group)header.append(el('div','tg-profile-group',state.me.group));
- root.append(header);
-
- const actions=el('div','tg-profile-actions');
- const action=(svg,label,fn)=>{
-  const btn=el('button','tg-profile-action');btn.type='button';
-  const ico=el('span','tg-profile-action-icon');ico.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+svg+'</svg>';
+ const hero=el('section','tg-native-hero');
+ const avatar=el('div','tg-native-avatar',initial);
+ if(photo){const img=el('img');img.src=photo;img.alt='Фото профиля';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img)}
+ const name=el('h2','tg-native-name',fullName);
+ const uname=el('div','tg-native-username',username);
+ hero.append(avatar,name,uname);
+ if(state.me?.group)hero.append(el('div','tg-native-group','Группа '+state.me.group));
+ root.append(hero);
+ const actions=el('div','tg-native-actions');
+ const action=(symbol,label,fn)=>{
+  const btn=el('button','tg-native-action');btn.type='button';
+  const ico=el('span','tg-native-action-icon');ico.textContent=symbol;
   btn.append(ico,el('span','',label));btn.onclick=fn;actions.append(btn);
  };
- action('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/>','Изменить ФИО',()=>openRegistration(true));
- action('<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L8 18l-4 1 1-4z"/>','О себе',editProfileBio);
- action('<path d="M12 3.5v2M12 18.5v2M3.5 12h2M18.5 12h2M6 6l1.4 1.4M16.6 16.6 18 18M18 6l-1.4 1.4M7.4 16.6 6 18"/><circle cx="12" cy="12" r="4.2"/>','Настройки',()=>showPage('settings'));
+ action('✎','Изменить',()=>openRegistration(true));
+ action('ⓘ','О себе',editProfileBio);
+ action('⚙','Настройки',()=>showPage('settings'));
  root.append(actions);
-
- const section=(label)=>root.append(el('div','tg-profile-section',label));
- const card=()=>{const x=el('div','tg-profile-card');root.append(x);return x};
- const line=(container,label,value,click,subtle=false)=>{
-  const row=el('button','tg-profile-row'+(click?' is-clickable':''));
+ const section=(label)=>root.append(el('div','tg-native-section',label));
+ const card=()=>{const x=el('div','tg-native-card');root.append(x);return x};
+ const line=(container,symbol,label,value,click,subtle=false)=>{
+  const row=el('button','tg-native-row'+(click?' is-clickable':''));
   row.type='button';row.disabled=!click;
-  const copy=el('span','tg-profile-row-copy');
-  copy.append(el('span','tg-profile-row-label',label),el('span','tg-profile-row-value'+(subtle?' is-subtle':''),value||'Не указано'));
-  row.append(copy);
-  if(click){const end=el('span','tg-profile-row-end','›');row.append(end);row.onclick=click}
+  const icon=el('span','tg-native-row-icon',symbol);
+  const body=el('span','tg-native-row-body');
+  body.append(el('span','tg-native-row-label',label),el('span','tg-native-row-value'+(subtle?' is-subtle':''),value||'Не указано'));
+  row.append(icon,body);
+  if(click)row.append(el('span','tg-native-row-chevron','›'));
+  if(click)row.onclick=click;
   container.append(row);
  };
  section('Информация');
  let box=card();
- line(box,'О себе',state.me?.bio||'Добавить информацию о себе',editProfileBio,!state.me?.bio);
- line(box,'Имя пользователя',username,u.username?()=>copyProfileValue('@'+u.username,'Username'):null,!u.username);
- line(box,'Telegram ID',u.id?String(u.id):'Не указан',u.id?()=>copyProfileValue(u.id,'Telegram ID'):null,!u.id);
-
+ line(box,'✎','О себе',state.me?.bio||'Добавить информацию о себе',editProfileBio,!state.me?.bio);
+ line(box,'@','Имя пользователя',username,u.username?()=>copyProfileValue('@'+u.username,'Username'):null,!u.username);
+ line(box,'▣','Telegram ID',u.id?String(u.id):'Не указан',u.id?()=>copyProfileValue(u.id,'Telegram ID'):null,!u.id);
  section('Личные данные');
  box=card();
- line(box,'Имя в Telegram',tgName||'Не указано',null,!tgName);
- line(box,'ФИО в приложении',registered.full_name||'Не заполнено',()=>openRegistration(true),!registered.full_name);
- line(box,'Язык интерфейса',(u.language_code||'ru').toUpperCase(),null);
-
+ line(box,'♙','Имя в Telegram',tgName||'Не указано',null,!tgName);
+ line(box,'✎','ФИО в приложении',registered.full_name||'Не заполнено',()=>openRegistration(true),!registered.full_name);
+ line(box,'文','Язык интерфейса',(u.language_code||'ru').toUpperCase(),null);
  section('Учебный профиль');
  box=card();
- line(box,'Группа',state.me?.group||GROUP,null);
- line(box,'Статус регистрации',registered.registered?'Завершена':'Не завершена',null,!registered.registered);
-
- const note=el('p','tg-profile-note','Фото, имя и username синхронизируются с Telegram и доступны здесь только для просмотра. ФИО и описание можно менять отдельно для приложения.');
- root.append(note);
+ line(box,'▤','Группа',state.me?.group||GROUP,null);
+ line(box,'✓','Статус регистрации',registered.registered?'Завершена':'Не завершена',null,!registered.registered);
+ root.append(el('p','tg-native-note','Данные Telegram доступны только для просмотра. ФИО и описание можно изменить в приложении.'));
 }
 async function renderStudents(){
  const root=$('#studentsContent'),sortButton=$('#studentsSortToggle');root.replaceChildren(el('div','skeleton'));
