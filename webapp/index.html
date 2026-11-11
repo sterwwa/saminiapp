@@ -161,9 +161,6 @@ async function renderNext(){
 }
 function renderKnowledge(){
  const root=$('#nextContent');root.replaceChildren();
- const back=el('button','home-action wide'),backIcon=el('span','home-action-icon','‹');backIcon.style.background='#49415f';
- const backCopy=el('span','home-action-copy');backCopy.append(el('b','','Назад'),el('small','','Вернуться на главную'));
- back.append(backIcon,backCopy);back.onclick=()=>renderNext();root.append(back);
  root.append(el('div','page-title','База знаний'),el('p','page-sub','Чаты нашей группы'));
  const chats=[
   {name:'Сашки с Куратором',url:'https://t.me/+yk6KMpltV6ZkMmUy',desc:'Открыть чат в Telegram'},
