@@ -447,8 +447,7 @@ async def api_students(request: web.Request) -> web.Response:
                     if not roles:
                         roles = ["student"]
                     if uid in d.admin_ids:
-                        roles = ["support"]
-                        item["role"] = "support"
+                        continue
                     item["roles"] = roles
                     item.pop("roles_json", None)
                     item["is_me"] = uid == viewer
