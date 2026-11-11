@@ -134,6 +134,12 @@ async def auth_telegram(request: web.Request) -> web.Response:
     return response
 
 
+async def auth_logout(request: web.Request) -> web.Response:
+    response = web.json_response({"logged_out": True})
+    response.del_cookie("sa225_session", path="/", secure=True, httponly=True, samesite="Lax")
+    return response
+
+
 @web.middleware
 async def guard(request: web.Request, handler):
     d: Deps = request.app["deps"]
@@ -1324,6 +1330,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
     app.router.add_post("/auth/telegram", auth_telegram)
+    app.router.add_post("/auth/logout", auth_logout)
     app.router.add_get("/api/day", api_day)
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
