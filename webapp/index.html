@@ -760,7 +760,6 @@ function errorBox(message){const b=el('div','errorbox');b.append(el('div','emoji
 function renderSchedule(){const root=$('#scheduleContent');root.replaceChildren();$('#scheduleTitle').textContent=state.view==='week'?'Расписание на неделю':diff(state.sel,now().date)===0?'Сегодня':diff(state.sel,now().date)===1?'Завтра':cap(WD[wd(state.sel)]);$('#scheduleSub').textContent=`${dm(state.sel)} · группа ${GROUP}`;renderNav();if(state.error&&!state.data){root.append(errorBox(state.error));return}if(!state.data){root.append(el('div','skeleton'),el('div','skeleton'));return}if(state.data.days?.length&&state.data.days.every(d=>d.error)){const box=errorBox('Источник расписания техникума временно не отвечает. Откройте официальный сайт или попробуйте обновить данные позже.');const link=el('a','textbtn','Открыть расписание на сайте техникума');link.href='https://guspoliteh.ru/studentu/raspisanie-zanyatiy/';link.target='_blank';link.rel='noopener';box.append(link);root.append(box);return}if(state.view==='week'){state.data.days.forEach(d=>{if(wd(d.date)===0&&!d.lessons.length&&!d.error)return;const sec=el('section','weekday'),head=el('button','weekday-head');head.append(el('b','',`${cap(WD[wd(d.date)])}, ${dm(d.date)}`),el('span','',d.error?'нет данных':`${d.lessons.length} ${plural(d.lessons.length)}`));head.onclick=()=>changeDate(d.date).then(()=>setView('day'));sec.append(head);if(d.cached)sec.append(el('p','notice','Показан последний сохранённый вариант расписания: сайт техникума временно не отвечает.'));if(d.error)sec.append(el('p','notice','Сайт техникума не ответил для этого дня.'));else if(!d.lessons.length)sec.append(el('p','notice','Занятий нет.'));else d.lessons.forEach(l=>{const row=el('div','weeklesson'),tm=el('div','time',l.start||`${l.number||'•'}`);if(l.end)tm.append(el('small','',l.end));const info=el('div');info.append(el('b','',l.subject));info.append(el('small','',[l.room&&`каб. ${l.room}`,l.teacher].filter(Boolean).join(' · ')));row.append(tm,info);sec.append(row)});root.append(sec)});return}const day=dayData(state.sel);if(!day){root.append(errorBox('Нет данных для выбранной даты.'));return}if(day.error){root.append(errorBox('Сайт техникума временно не ответил для этого дня.'));return}if(day.cached)root.append(el('p','notice','Показан последний сохранённый вариант расписания: сайт техникума временно не отвечает.'));if(!day.lessons.length){root.append(emptyBox('Занятий нет','В расписании на этот день пар нет.'));return}const np=now();if(state.sel===np.date)root.append(statusCard(day,np));const times=day.lessons.filter(l=>l.start);root.append(el('p','notice',`${day.lessons.length} ${plural(day.lessons.length)}${times.length?` · ${times[0].start}–${times[times.length-1].end||''}`:''}`),renderTimeline(day,np))}
 async function changeDate(d){state.sel=d;state.error=null;renderSchedule();try{if(state.view==='week')await loadWeek();else await loadDay()}catch(e){state.error=e.message}renderSchedule()}
 function upcoming(){const n=now(),items=[];for(let offset=0;offset<8;offset++){const d=add(n.date,offset),week=state.cache.get(monday(d))?.data,day=week?.days?.find(x=>x.date===d);if(!day||day.error)continue;for(const l of day.lessons){if(!l.start||!l.end)continue;const start=min(l.start);if(offset===0&&start<=n.min)continue;items.push({date:d,offset,lesson:l})}}return items.slice(0,5)}
-const LESSON_REMINDER_TEST_MODE=true; // ВРЕМЕННО: показать тестовую плашку на главной
 let lessonReminderVisibleKey='';
 let homeReminderDay=null,homeReminderDate='',homeReminderAt=0;
 let lessonReminderTimer=null,lessonReminderTarget=0,lessonReminderCurrentKey='';
@@ -770,10 +769,10 @@ function closeLessonReminder(key){
  if(key){try{localStorage.setItem('sa225-lesson-reminder:'+key,'1')}catch{}}
  lessonReminderVisibleKey='';
 }
-function showLessonReminder(date,lesson,minutesLeft,testMode=false,testSeconds=0){
- const key=date+'-'+lesson.start+'-'+(lesson.subject||'')+(testMode?'-TEST':'');
+function showLessonReminder(date,lesson,minutesLeft){
+ const key=date+'-'+lesson.start+'-'+(lesson.subject||'');
  if(lessonReminderVisibleKey===key&&document.getElementById('lessonReminderBanner'))return;
- let dismissed=false;if(!testMode){try{dismissed=localStorage.getItem('sa225-lesson-reminder:'+key)==='1'}catch{}}
+ let dismissed=false;try{dismissed=localStorage.getItem('sa225-lesson-reminder:'+key)==='1'}catch{}
  if(dismissed)return;
  lessonReminderTimer&&clearInterval(lessonReminderTimer);
  document.getElementById('lessonReminderBanner')?.remove();
@@ -781,7 +780,7 @@ function showLessonReminder(date,lesson,minutesLeft,testMode=false,testSeconds=0
  const root=document.getElementById('nextContent');if(!root)return;
  const banner=el('section','lesson-reminder-banner');banner.id='lessonReminderBanner';
  const top=el('div','lesson-reminder-banner-top');
- const label=el('span','lesson-reminder-banner-label',testMode?'ТЕСТ • СЛЕДУЮЩАЯ ПАРА':'СЛЕДУЮЩАЯ ПАРА');
+ const label=el('span','lesson-reminder-banner-label','СЛЕДУЮЩАЯ ПАРА');
  const countdown=el('b','lesson-reminder-countdown');countdown.id='lessonReminderCountdown';
  top.append(label,countdown);
  const subject=el('div','lesson-reminder-banner-subject',lesson.subject||'Занятие');
@@ -791,9 +790,8 @@ function showLessonReminder(date,lesson,minutesLeft,testMode=false,testSeconds=0
  meta.append(time,room);
  banner.append(top,subject,meta);
  root.prepend(banner);
- const target=new Date();const [hh,mm]=lesson.start.split(':').map(Number);
  const current=now();const delta=Math.max(0,min(lesson.start)-current.min);
- lessonReminderTarget=Date.now()+(testMode?testSeconds*1000:delta*60000);
+ lessonReminderTarget=Date.now()+delta*60000;
  const update=()=>{
   const left=Math.max(0,Math.ceil((lessonReminderTarget-Date.now())/1000));
   const h=Math.floor(left/3600),m=Math.floor(left%3600/60),sec=left%60;
@@ -845,10 +843,7 @@ async function renderNext(){
   grid.append(b);
  });
  root.append(grid);
- if(LESSON_REMINDER_TEST_MODE){
-  const testStart=new Date(Date.now()+120000).toLocaleTimeString('ru-RU',{hour:'2-digit',minute:'2-digit',hour12:false});
-  showLessonReminder('TEST',{subject:'Тестовое занятие',room:'214',start:testStart},2,true,120);
- }else await checkLessonReminder();
+ await checkLessonReminder();
 }
 function renderKnowledge(){
  const root=$('#nextContent');root.replaceChildren();
