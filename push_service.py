@@ -50,9 +50,13 @@ def pending_subscriptions(data_dir: Path, event_key: str) -> list[dict]:
         tables = {row[0] for row in db.execute("SELECT name FROM sqlite_master WHERE type='table'")}
         if "registered_users" not in tables:
             return []
-        rows = db.execute("""SELECT s.telegram_id,s.endpoint,s.subscription_json
-            FROM webpush_subscriptions s JOIN registered_users u ON u.telegram_id=s.telegram_id
-            LEFT JOIN access_bans b ON b.telegram_id=s.telegram_id WHERE b.telegram_id IS NULL""").fetchall()
+        if "access_bans" in tables:
+            rows = db.execute("""SELECT s.telegram_id,s.endpoint,s.subscription_json
+                FROM webpush_subscriptions s JOIN registered_users u ON u.telegram_id=s.telegram_id
+                LEFT JOIN access_bans b ON b.telegram_id=s.telegram_id WHERE b.telegram_id IS NULL""").fetchall()
+        else:
+            rows = db.execute("""SELECT s.telegram_id,s.endpoint,s.subscription_json
+                FROM webpush_subscriptions s JOIN registered_users u ON u.telegram_id=s.telegram_id""").fetchall()
         result = []
         for uid, endpoint, raw in rows:
             user_prefs = prefs.get(str(uid), {}) if isinstance(prefs, dict) else {}
