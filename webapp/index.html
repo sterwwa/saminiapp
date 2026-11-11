@@ -547,6 +547,11 @@ html.auth-pending body>#installLanding{display:flex!important;visibility:visible
 #topNotification .top-notification-title{font-size:14px;line-height:1.2;font-weight:800;white-space:nowrap}
 #topNotification .top-notification-subtitle{font-size:11px;line-height:1.25;color:#aaa6b9;white-space:nowrap}
 @media(prefers-reduced-motion:reduce){#topNotification{transition:none}}
+
+/* Поведение установленного приложения */
+html,body{overscroll-behavior-y:none}
+body{min-height:100vh;min-height:100dvh}
+button,a,input,select,textarea{touch-action:manipulation}
 </style>
 </head>
 <body>
@@ -1106,5 +1111,10 @@ async function refreshAll(force=false){if(state.busy)return;state.busy=true;stat
 $('#viewSwitch').addEventListener('click',e=>{const b=e.target.closest('button[data-view]');if(b&&state.view!==b.dataset.view){buzz();setView(b.dataset.view);refreshAll(true)}});document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>showPage(b.dataset.page)));$('#studentsSortToggle').addEventListener('click',()=>{studentsSort=studentsSort==='roles'?'alpha':'roles';buzz();renderStudents()});let appHiddenAt=0;document.addEventListener('visibilitychange',()=>{if(document.hidden){appHiddenAt=Date.now();return}refreshAll(false);if(appHiddenAt&&Date.now()-appHiddenAt>1500){showTopNotification();appHiddenAt=0}});window.addEventListener('pageshow',()=>{if(appHiddenAt&&Date.now()-appHiddenAt>1500){showTopNotification();appHiddenAt=0}});window.addEventListener('online',()=>refreshAll(true));let sx=0,sy=0;document.addEventListener('touchstart',e=>{sx=e.touches[0].clientX;sy=e.touches[0].clientY},{passive:true});document.addEventListener('touchend',e=>{if(state.page!=='schedule'||state.view!=='day')return;const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;if(Math.abs(dx)>85&&Math.abs(dy)<45)changeDate(add(state.sel,dx<0?1:-1))},{passive:true});setInterval(()=>{if(!document.hidden&&state.data){if(state.page==='schedule')renderSchedule();if(state.page==='next')renderNext()}},30000);
 const start=(tg?.initDataUnsafe?.start_param||new URLSearchParams(location.search).get('start')||'');state.sel=add(now().date,start==='tomorrow'?1:0);if(start==='week')state.view='week';if(start==='next')state.page='next';if(start==='profile'||start==='settings')state.page='settings';if(state.view==='week')setView('week');if(state.page!=='schedule')showPage(state.page);refreshAll();
 applyTheme(themePreference);tg?.onEvent?.('themeChanged',()=>{if(themePreference==='telegram')applyTheme('telegram')});
+if('serviceWorker' in navigator && location.protocol==='https:'){
+ navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(()=>{});
+}
+window.addEventListener('offline',()=>toast('Нет подключения к интернету'));
+
 </script>
 </body></html>
