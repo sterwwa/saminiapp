@@ -114,6 +114,12 @@ def parse_schedule(html: str) -> DaySchedule:
             subject, room = _clean(m.group("subject")), _clean(m.group("room"))
         else:
             subject, room = large_text, ""
+
+        # Если сайт оставил карточку пары без названия предмета,
+        # это не занятие: не показываем его как «Занятие без названия».
+        if subject.casefold() in {"", "-", "—", "без названия", "занятие без названия"}:
+            continue
+
         teacher = _clean(small.get_text(" ")) if small is not None else ""
         lessons.append(
             Lesson(
