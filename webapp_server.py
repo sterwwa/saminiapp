@@ -763,7 +763,7 @@ async def api_journal_get(request: web.Request) -> web.Response:
             try:
                 students = [dict(row) for row in db.execute(
                     "SELECT telegram_id, full_name FROM registered_users ORDER BY full_name COLLATE NOCASE"
-                ).fetchall()]
+                ).fetchall() if int(row["telegram_id"]) not in d.admin_ids]
                 rows = db.execute(
                     "SELECT lesson_number, student_id FROM journal_absences WHERE lesson_date = ?",
                     (day.isoformat(),)
@@ -853,7 +853,7 @@ async def api_journal_history(request: web.Request) -> web.Response:
             try:
                 students = [dict(row) for row in db.execute(
                     "SELECT telegram_id, full_name FROM registered_users ORDER BY full_name COLLATE NOCASE"
-                ).fetchall()]
+                ).fetchall() if int(row["telegram_id"]) not in d.admin_ids]
                 sessions = [dict(row) for row in db.execute(
                     "SELECT lesson_date, lesson_number, subject FROM journal_sessions WHERE subject<>'' ORDER BY subject COLLATE NOCASE, lesson_date, CAST(lesson_number AS INTEGER)"
                 ).fetchall()]
@@ -966,7 +966,7 @@ async def api_journal_save(request: web.Request) -> web.Response:
                     known = {int(row["telegram_id"]) for row in db.execute(
                         f"SELECT telegram_id FROM registered_users WHERE telegram_id IN ({placeholders})",
                         tuple(absent_ids)
-                    ).fetchall()}
+                    ).fetchall() if int(row["telegram_id"]) not in d.admin_ids}
                     if known != set(absent_ids):
                         raise ValueError("В списке есть неизвестные студенты")
                 now = datetime.now(timezone.utc).isoformat(timespec="seconds")
