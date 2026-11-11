@@ -808,7 +808,7 @@ async def api_admin_restore_user(request: web.Request) -> web.Response:
 
 
 
-async def _telegram_api_json(d: Deps, method: str, payload: dict) -> dict | None:
+async def _telegram_api_json(d: Deps, method: str, payload: dict) -> dict | list | None:
     try:
         async with ClientSession(timeout=ClientTimeout(total=8)) as session:
             async with session.post(f"https://api.telegram.org/bot{d.token}/{method}", json=payload) as response:
@@ -816,7 +816,7 @@ async def _telegram_api_json(d: Deps, method: str, payload: dict) -> dict | None
         if not isinstance(data, dict) or not data.get("ok"):
             return None
         result = data.get("result")
-        return result if isinstance(result, dict) else None
+        return result if isinstance(result, (dict, list)) else None
     except Exception:
         log.debug("Telegram %s недоступен для emoji status", method, exc_info=True)
         return None
