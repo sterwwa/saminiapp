@@ -268,17 +268,14 @@ async def send_view(chat_id: int, what: str) -> None:
         await bot.send_message(chat_id, ERR_TEXT)
 
 
-@dp.message(Command("today"))
 async def cmd_today(m: Message) -> None:
     await send_view(m.chat.id, "today")
 
 
-@dp.message(Command("tomorrow"))
 async def cmd_tomorrow(m: Message) -> None:
     await send_view(m.chat.id, "tomorrow")
 
 
-@dp.message(Command("week"))
 async def cmd_week(m: Message) -> None:
     await send_view(m.chat.id, "week")
 
@@ -291,7 +288,6 @@ async def cb_view(c: CallbackQuery) -> None:
         await send_view(c.message.chat.id, what)
 
 
-@dp.message(Command("schedule"))
 async def cmd_schedule(m: Message) -> None:
     """Ближайший день (начиная с завтра), в котором есть занятия."""
     start = now().date() + timedelta(days=1)
@@ -321,7 +317,6 @@ def _lesson_text(l: dict, rng: str | None = None) -> str:
     return "\n".join(parts)
 
 
-@dp.message(Command("next"))
 async def cmd_next(m: Message) -> None:
     """Ближайшая пара и сколько времени до неё."""
     n = now()
@@ -367,7 +362,6 @@ async def cmd_next(m: Message) -> None:
         await m.answer(ERR_TEXT)
 
 
-@dp.message(Command("app"))
 async def cmd_app(m: Message) -> None:
     """Кнопка запуска Mini App: в личке — web_app, в беседе — ссылка t.me (web_app там не поддерживается)."""
     if m.chat.type == "private" and WEBAPP_URL:
@@ -380,13 +374,11 @@ async def cmd_app(m: Message) -> None:
     await m.answer("Расписание группы в приложении:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[[btn]]))
 
 
-@dp.message(Command("id"))
 async def cmd_id(m: Message) -> None:
     """Показывает ваш Telegram id — вписать в ADMIN_IDS, чтобы /status и /raw были только у вас."""
     await m.answer(f"Ваш id: <code>{m.from_user.id if m.from_user else '?'}</code>")
 
 
-@dp.message(Command("status"))
 async def cmd_status(m: Message) -> None:
     if not is_admin(m):
         await m.answer("Команда доступна только администратору.")
@@ -422,7 +414,6 @@ async def cmd_status(m: Message) -> None:
     await m.answer("\n".join(lines))
 
 
-@dp.message(Command("raw"))
 async def cmd_raw(m: Message, command: CommandObject) -> None:
     """Диагностика: присылает файлом сырой ответ сайта. /raw 2026-11-11"""
     if not is_admin(m):
@@ -554,14 +545,8 @@ async def main() -> None:
     dp.message.outer_middleware(PrivateIncomingCleanup())
     bot.session.middleware(cleanup_private_outgoing)
     await bot.set_my_commands([
-        BotCommand(command="today", description="Расписание на сегодня"),
-        BotCommand(command="tomorrow", description="Расписание на завтра"),
-        BotCommand(command="week", description="Расписание на неделю"),
-        BotCommand(command="schedule", description="Ближайший учебный день"),
-        BotCommand(command="next", description="Ближайшая пара и время до неё"),
-        BotCommand(command="app", description="Открыть мини-приложение"),
+        BotCommand(command="start", description="Приветствие"),
         BotCommand(command="c", description="Очистить чат и показать приветствие"),
-        BotCommand(command="status", description="Статус бота (админ)"),
     ])
 
     global scheduler
