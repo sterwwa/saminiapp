@@ -512,7 +512,7 @@ html.auth-pending body>.standalone-sheet-backdrop{display:flex!important;visibil
 /* Mobile install onboarding */
 html.auth-pending body>*:not(.standalone-sheet-backdrop):not(#installLanding){display:none!important}
 html.auth-pending body>#installLanding{display:flex!important;visibility:visible!important}
-#installLanding{position:fixed;z-index:1100;inset:0;display:none;flex-direction:column;align-items:center;overflow-y:auto;overscroll-behavior:contain;background:radial-gradient(ellipse at 50% -10%,rgba(111,65,190,.22),transparent 46%),linear-gradient(155deg,#08080d 0%,#0b0d18 58%,#08090f 100%);color:#f7f5ff;padding:calc(24px + env(safe-area-inset-top)) 18px calc(102px + env(safe-area-inset-bottom));font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+#installLanding{position:fixed;z-index:1100;inset:0;display:none;flex-direction:column;align-items:center;overflow-y:auto;overscroll-behavior:contain;background:radial-gradient(ellipse at 50% -10%,rgba(111,65,190,.22),transparent 46%),linear-gradient(155deg,#08080d 0%,#0b0d18 58%,#08090f 100%);color:#f7f5ff;padding:calc(24px + env(safe-area-inset-top)) 18px calc(24px + env(safe-area-inset-bottom));font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
 #installLanding[hidden]{display:none!important}
 .install-inner{width:min(100%,460px);margin:auto;display:flex;flex-direction:column;align-items:center}
 .install-app-icon{width:82px;height:82px;border-radius:25px;display:grid;place-items:center;background:linear-gradient(145deg,#985cff,#6d35cf 70%,#5425ad);box-shadow:0 12px 34px rgba(139,92,246,.35),inset 0 1px 0 rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.18);margin:4px 0 17px}
@@ -528,7 +528,7 @@ html.auth-pending body>#installLanding{display:flex!important;visibility:visible
 .install-browser-link{border:0;background:none;color:#b99aff;font:700 13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif;margin:19px 0 0;padding:9px 12px;text-align:center;cursor:pointer}
 .install-browser-link span{color:#d4c2ff;font-size:17px;margin-left:4px}
 .install-browser-link:active{opacity:.72}
-@media(max-height:760px){#installLanding{padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(92px + env(safe-area-inset-bottom))}.install-app-icon{width:66px;height:66px;border-radius:20px;margin:0 0 12px}.install-app-icon img{width:100%;height:100%}.install-title{font-size:26px}.install-subtitle{margin:7px 0 15px}.install-steps{gap:8px}.install-step{min-height:62px;padding:11px 12px}.install-number{width:31px;height:31px}.install-step-copy{font-size:12px}}
+@media(max-height:760px){#installLanding{padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(16px + env(safe-area-inset-bottom))}.install-app-icon{width:66px;height:66px;border-radius:20px;margin:0 0 12px}.install-app-icon img{width:100%;height:100%}.install-title{font-size:26px}.install-subtitle{margin:7px 0 15px}.install-steps{gap:8px}.install-step{min-height:62px;padding:11px 12px}.install-number{width:31px;height:31px}.install-step-copy{font-size:12px}}
 @media(prefers-reduced-motion:reduce){#installLanding *{scroll-behavior:auto!important}}
 
 </style>
@@ -544,13 +544,6 @@ html.auth-pending body>#installLanding{display:flex!important;visibility:visible
   <div class="install-steps" id="installSteps"></div>
   <button class="install-browser-link" type="button" onclick="continueToBrowserLogin()">Или пользоваться в браузере, без установки <span>→</span></button>
  </div>
- <div class="install-browser-chrome" aria-hidden="true">
-  <div class="install-browser-inner">
-   <div class="install-browser-back"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></div>
-   <div class="install-browser-address"><svg class="lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg><span>24starosta.ru</span><svg class="reload" viewBox="0 0 24 24"><path d="M20 7v5h-5M4 17v-5h5"/><path d="M5.6 9A7 7 0 0 1 18 6l2 6M4 12l2 6a7 7 0 0 0 12.4-3"/></svg></div>
-   <div class="install-browser-share"><svg viewBox="0 0 24 24"><path d="M12 15V3m-4 4 4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg></div>
-  </div>
- </div>
-</section>
+ </section>
 
 <header class="top"><div class="brand"><div class="logo" aria-label="Логотип Вася Бот"><img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAIAAAACACAMAAAD04JH5AAAAwFBMVEX5+fnm5efZ2NrQz9HHxsi+vb+zs7Ssq66mpaegn6CZmJqTkpSOjY+Ih4mEg4WAf4F8e314d3hzcnRvbm9ramxoZ2hlZGViYmNfXl9bWltXV1hVVFVRUFFNTE1JSElFREU/Pz86OTk1NDQwLy8sKysnJyckJCQ
