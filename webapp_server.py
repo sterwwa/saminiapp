@@ -138,9 +138,13 @@ async def api_day(request: web.Request) -> web.Response:
     except Exception:
         log.exception("Неожиданная ошибка получения расписания на %s", day)
         result = _day_json(d, day, [], True)
+    simulation_state = await asyncio.to_thread(_read_simulation_state, d)
+    simulation = ({"active": True, "date": simulation_state.get("date"), "old": simulation_state.get("old"), "new": simulation_state.get("new")}
+                  if simulation_state.get("active") and simulation_state.get("date") and simulation_state.get("old") and simulation_state.get("new") else None)
     return web.json_response({
         "tz": d.tz_name, "group": d.group,
         "now": datetime.now(d.tz).isoformat(timespec="seconds"),
+        "simulation": simulation,
         "day": result,
     })
 
@@ -171,9 +175,13 @@ async def api_week(request: web.Request) -> web.Response:
                 return _day_json(d, day, [], True)
 
     results = await asyncio.gather(*(one(day) for day in days))
+    simulation_state = await asyncio.to_thread(_read_simulation_state, d)
+    simulation = ({"active": True, "date": simulation_state.get("date"), "old": simulation_state.get("old"), "new": simulation_state.get("new")}
+                  if simulation_state.get("active") and simulation_state.get("date") and simulation_state.get("old") and simulation_state.get("new") else None)
     return web.json_response({
         "tz": d.tz_name, "group": d.group,
         "now": datetime.now(d.tz).isoformat(timespec="seconds"),
+        "simulation": simulation,
         "week_start": monday.isoformat(), "days": results,
     })
 
@@ -514,6 +522,9 @@ async def api_admin_simulate_change(request: web.Request) -> web.Response:
 
         state["active"] = True
         state["last_fingerprint"] = fingerprint
+        state["date"] = selected_day.isoformat()
+        state["old"] = old
+        state["new"] = new
         await asyncio.to_thread(_write_simulation_state, d, state)
     return web.json_response({"sent": True, "active": True, "date": selected_day.isoformat()})
 
