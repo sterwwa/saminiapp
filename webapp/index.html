@@ -631,6 +631,30 @@ body{
  .page{animation:none}
 }
 
+
+/* Компактная высота нижней навигации */
+.bottom{
+ bottom:max(2px,env(safe-area-inset-bottom,0px))!important;
+ padding:3px 8px!important;
+}
+.bottom-inner{align-items:center}
+.tab{
+ min-height:0!important;height:43px!important;
+ padding:3px 1px!important;
+ gap:2px!important;
+ line-height:1.05;
+}
+.tab .ico,.tab .ico svg{width:19px!important;height:19px!important}
+.tab .ico:has(.tab-profile-avatar){width:21px!important;height:21px!important}
+@media(max-width:380px){
+ .tab{height:41px!important}
+ .tab .ico,.tab .ico svg{width:18px!important;height:18px!important}
+}
+@media(max-height:620px) and (orientation:landscape){
+ .bottom{padding:2px 8px!important}
+ .tab{height:38px!important;min-height:0!important}
+}
+
 </style>
 </head>
 <body>
