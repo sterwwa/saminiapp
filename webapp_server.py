@@ -1352,6 +1352,49 @@ async def api_journal_bulk_save(request: web.Request) -> web.Response:
     return web.json_response({"saved": True, "date": day.isoformat(), "sessions_saved": len(normalized)})
 
 
+
+async def api_push_config(request: web.Request) -> web.Response:
+    public_key = os.getenv("WEBPUSH_VAPID_PUBLIC_KEY", "").strip()
+    if not public_key:
+        return web.json_response({"enabled": False, "public_key": ""}, status=503)
+    return web.json_response({"enabled": True, "public_key": public_key})
+
+
+async def api_push_subscribe(request: web.Request) -> web.Response:
+    from push_service import save_subscription
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        raise web.HTTPBadRequest(text="Ожидается JSON")
+    subscription = body.get("subscription") if isinstance(body, dict) else None
+    if not isinstance(subscription, dict):
+        raise web.HTTPBadRequest(text="Не найдена push-подписка")
+    endpoint, keys = subscription.get("endpoint"), subscription.get("keys")
+    if (not isinstance(endpoint, str) or not endpoint.startswith("https://") or len(endpoint) > 4096
+            or not isinstance(keys, dict) or not isinstance(keys.get("p256dh"), str)
+            or not isinstance(keys.get("auth"), str) or len(keys["p256dh"]) > 256 or len(keys["auth"]) > 256):
+        raise web.HTTPBadRequest(text="Некорректная push-подписка")
+    await asyncio.to_thread(save_subscription, d.data_dir, uid, subscription)
+    return web.json_response({"saved": True})
+
+
+async def api_push_unsubscribe(request: web.Request) -> web.Response:
+    from push_service import remove_subscription
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        raise web.HTTPBadRequest(text="Ожидается JSON")
+    endpoint = body.get("endpoint") if isinstance(body, dict) else None
+    if not isinstance(endpoint, str) or not endpoint.startswith("https://") or len(endpoint) > 4096:
+        raise web.HTTPBadRequest(text="Некорректный endpoint")
+    await asyncio.to_thread(remove_subscription, d.data_dir, uid, endpoint)
+    return web.json_response({"removed": True})
+
+
 async def api_preferences(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     user = request.get("user") or {}
@@ -1405,6 +1448,9 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_post("/api/register", api_register)
     app.router.add_post("/api/profile", api_profile)
     app.router.add_post("/api/preferences", api_preferences)
+    app.router.add_get("/api/push/config", api_push_config)
+    app.router.add_post("/api/push/subscribe", api_push_subscribe)
+    app.router.add_post("/api/push/unsubscribe", api_push_unsubscribe)
     return app
 
 
