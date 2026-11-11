@@ -181,6 +181,38 @@ async def guard(request: web.Request, handler):
     return resp
 
 
+async def app_manifest(request: web.Request) -> web.Response:
+    path = INDEX.parent / "manifest.webmanifest"
+    return web.Response(
+        text=path.read_text(encoding="utf-8"),
+        content_type="application/manifest+json",
+        charset="utf-8",
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
+
+
+async def app_icon(request: web.Request) -> web.Response:
+    path = INDEX.parent / "icon.svg"
+    return web.Response(
+        body=path.read_bytes(),
+        content_type="image/svg+xml",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
+async def apple_touch_icon(request: web.Request) -> web.Response:
+    html = INDEX.read_text(encoding="utf-8")
+    match = re.search(r'<div class="install-app-icon"[^>]*><img src="data:image/png;base64,([^"]+)"', html)
+    if not match:
+        raise web.HTTPNotFound(text="App icon not found")
+    icon = __import__("base64").b64decode(match.group(1))
+    return web.Response(
+        body=icon,
+        content_type="image/png",
+        headers={"Cache-Control": "public, max-age=86400"},
+    )
+
+
 async def index(request: web.Request) -> web.StreamResponse:
     return web.FileResponse(INDEX, headers={"Cache-Control": "no-cache", "X-Content-Type-Options": "nosniff"})
 
@@ -1328,6 +1360,9 @@ def create_app(deps: Deps) -> web.Application:
     app = web.Application(middlewares=[guard], client_max_size=1024 * 1024)
     app["deps"] = deps
     app.router.add_get("/", index)
+    app.router.add_get("/manifest.webmanifest", app_manifest)
+    app.router.add_get("/icon.svg", app_icon)
+    app.router.add_get("/apple-touch-icon.png", apple_touch_icon)
     app.router.add_get("/healthz", health)
     app.router.add_post("/auth/telegram", auth_telegram)
     app.router.add_post("/auth/logout", auth_logout)
@@ -1362,5 +1397,4 @@ async def start_server(app: web.Application, host: str, port: int) -> web.AppRun
     await web.TCPSite(runner, host, port).start()
     log.info("Mini App слушает %s:%d", host, port)
     return runner
-
 
