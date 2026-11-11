@@ -51,6 +51,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}button
 .profile-edit:active{transform:scale(.985)}
 .profile-note{font-size:11px;line-height:1.5;color:var(--muted);text-align:center;margin:10px 8px 0}
 
+
+.profile-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin:12px 0 17px}.profile-action{border:1px solid var(--line);background:var(--panel);border-radius:15px;padding:12px 5px;color:var(--text);display:flex;flex-direction:column;align-items:center;gap:7px;font-size:11px;font-weight:700}.profile-action .action-icon{width:34px;height:34px;border-radius:12px;display:grid;place-items:center;background:color-mix(in srgb,var(--accent) 13%,transparent);color:var(--accent);font-size:18px}.profile-line.clickable{cursor:pointer}.profile-line.clickable:active,.profile-action:active{opacity:.7}.profile-edit.secondary{background:var(--panel);color:var(--accent);border:1px solid var(--line)}
 </style>
 </head>
 <body>
@@ -92,34 +94,25 @@ function errorBox(message){const b=el('div','errorbox');b.append(el('div','emoji
 function renderSchedule(){const root=$('#scheduleContent');root.replaceChildren();$('#scheduleTitle').textContent=state.view==='week'?'Расписание на неделю':diff(state.sel,now().date)===0?'Сегодня':diff(state.sel,now().date)===1?'Завтра':cap(WD[wd(state.sel)]);$('#scheduleSub').textContent=`${dm(state.sel)} · группа ${GROUP}`;renderNav();if(state.error&&!state.data){root.append(errorBox(state.error));return}if(!state.data){root.append(el('div','skeleton'),el('div','skeleton'));return}if(state.data.days?.length&&state.data.days.every(d=>d.error)){const box=errorBox('Источник расписания техникума временно не отвечает. Откройте официальный сайт или попробуйте обновить данные позже.');const link=el('a','textbtn','Открыть расписание на сайте техникума');link.href='https://guspoliteh.ru/studentu/raspisanie-zanyatiy/';link.target='_blank';link.rel='noopener';box.append(link);root.append(box);return}if(state.view==='week'){state.data.days.forEach(d=>{if(wd(d.date)===0&&!d.lessons.length&&!d.error)return;const sec=el('section','weekday'),head=el('button','weekday-head');head.append(el('b','',`${cap(WD[wd(d.date)])}, ${dm(d.date)}`),el('span','',d.error?'нет данных':`${d.lessons.length} ${plural(d.lessons.length)}`));head.onclick=()=>changeDate(d.date).then(()=>setView('day'));sec.append(head);if(d.cached)sec.append(el('p','notice','Показан последний сохранённый вариант расписания: сайт техникума временно не отвечает.'));if(d.error)sec.append(el('p','notice','Сайт техникума не ответил для этого дня.'));else if(!d.lessons.length)sec.append(el('p','notice','Занятий нет.'));else d.lessons.forEach(l=>{const row=el('div','weeklesson'),tm=el('div','time',l.start||`${l.number||'•'}`);if(l.end)tm.append(el('small','',l.end));const info=el('div');info.append(el('b','',l.subject));info.append(el('small','',[l.room&&`каб. ${l.room}`,l.teacher].filter(Boolean).join(' · ')));row.append(tm,info);sec.append(row)});root.append(sec)});return}const day=dayData(state.sel);if(!day){root.append(errorBox('Нет данных для выбранной даты.'));return}if(day.error){root.append(errorBox('Сайт техникума временно не ответил для этого дня.'));return}if(day.cached)root.append(el('p','notice','Показан последний сохранённый вариант расписания: сайт техникума временно не отвечает.'));if(!day.lessons.length){root.append(emptyBox('Занятий нет','В расписании на этот день пар нет.'));return}const np=now();if(state.sel===np.date)root.append(statusCard(day,np));const times=day.lessons.filter(l=>l.start);root.append(el('p','notice',`${day.lessons.length} ${plural(day.lessons.length)}${times.length?` · ${times[0].start}–${times[times.length-1].end||''}`:''}`),renderTimeline(day,np))}
 async function changeDate(d){state.sel=d;state.error=null;renderSchedule();try{if(state.view==='week')await loadWeek();else await loadDay()}catch(e){state.error=e.message}renderSchedule()}
 function upcoming(){const n=now(),items=[];for(let offset=0;offset<8;offset++){const d=add(n.date,offset),week=state.cache.get(monday(d))?.data,day=week?.days?.find(x=>x.date===d);if(!day||day.error)continue;for(const l of day.lessons){if(!l.start||!l.end)continue;const start=min(l.start);if(offset===0&&start<=n.min)continue;items.push({date:d,offset,lesson:l})}}return items.slice(0,5)}
-async function renderNext(){const root=$('#nextContent');root.replaceChildren();$('#nextSub').textContent=`Группа ${GROUP} · ближайшие занятия`;if(!state.data){root.append(el('div','skeleton'));return}try{const currentMonday=monday(now().date),nextMonday=monday(add(now().date,7));if(!state.cache.has(currentMonday)){const current=await api(`/api/week?date=${encodeURIComponent(now().date)}`);state.cache.set(currentMonday,{data:current,at:Date.now()})}if(!state.cache.has(nextMonday)){const extra=await api(`/api/week?date=${encodeURIComponent(nextMonday)}`);state.cache.set(nextMonday,{data:extra,at:Date.now()})}}catch(e){/* расписание дня уже загружено; ошибка соседней недели не скрывает пары */}const items=upcoming();if(!items.length){root.append(emptyBox('Ближайших пар нет','На ближайшие дни занятия не найдены.','🎉'));return}items.forEach((x,i)=>{const card=el('div','card'),row=el('div','upnext'),time=el('div','up-time',x.lesson.start),info=el('div','up-info');info.append(el('b','',x.lesson.subject),el('small','',[x.offset===0?'Сегодня':x.offset===1?'Завтра':`${WD[wd(x.date)]}, ${dm(x.date)}`,x.lesson.room&&`каб. ${x.lesson.room}`,x.lesson.teacher].filter(Boolean).join(' · ')));row.append(time,info,el('span','tag',x.offset===0?'Скоро':dm(x.date)));card.append(row);root.append(card)})}
+async function renderNext(){const root=$('#nextContent');root.replaceChildren();$('#nextSub').textContent=`Группа ${GROUP} · ближайшие занятия`;if(!state.data){root.append(el('div','skeleton'));return}try{const currentMonday=monday(now().date),nextMonday=monday(add(now().date,7));if(!state.cache.has(currentMonday)){const current=await api(`/api/week?date=${encodeURIComponent(now().date)}`);state.cache.set(currentMonday,{data:current,at:Date.now()})}if(!state.cache.has(nextMonday)){const extra=await api(`/api/week?date=${encodeURIComponent(nextMonday)}`);state.cache.set(nextMondaasync function copyProfileValue(value,label){try{await navigator.clipboard.writeText(String(value));toast(label+' скопирован')}catch{toast('Не удалось скопировать')}}
+async function editProfileBio(){const current=state.me?.bio||'';const value=window.prompt('О себе (до 70 символов)',current);if(value===null)return;const bio=value.trim();if(bio.length>70){toast('Максимум 70 символов');return}try{const data=await api('/api/profile',{method:'POST',body:JSON.stringify({bio})});state.me.bio=data.bio;renderProfile();toast('Описание профиля сохранено')}catch(e){toast(e.message||'Не удалось сохранить описание')}}
 function renderProfile(){
- const root=$('#profileContent');root.replaceChildren();
- const u=state.me?.user||{},registered=state.me?.registration||{};
- const fullName=registered.full_name||[u.first_name,u.last_name].filter(Boolean).join(' ')||'Пользователь';
- const username=u.username?('@'+u.username):'Не указан';
- const initial=(fullName.trim().charAt(0)||'П').toLocaleUpperCase('ru');
- const telegramUser=tg?.initDataUnsafe?.user||{};
- const photo=typeof telegramUser.photo_url==='string'&&telegramUser.photo_url.startsWith('https://')?telegramUser.photo_url:'';
- const hero=el('section','profile-hero');
- const avatar=el('div','profile-avatar-lg',initial);
+ const root=$('#profileContent');root.replaceChildren();const u=state.me?.user||{},registered=state.me?.registration||{};
+ const fullName=registered.full_name||[u.first_name,u.last_name].filter(Boolean).join(' ')||'Пользователь',username=u.username?('@'+u.username):'Не указан',initial=(fullName.trim().charAt(0)||'П').toLocaleUpperCase('ru');
+ const tu=tg?.initDataUnsafe?.user||{},photo=typeof tu.photo_url==='string'&&tu.photo_url.startsWith('https://')?tu.photo_url:'';
+ const hero=el('section','profile-hero'),avatar=el('div','profile-avatar-lg',initial);
  if(photo){const img=el('img');img.src=photo;img.alt='Аватар профиля';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img)}
- hero.append(avatar,el('h2','',fullName),el('p','profile-username',username));
- const statePill=el('div','profile-state');statePill.append(el('i'),document.createTextNode('Профиль Telegram'));hero.append(statePill);
- const makeSection=(title,rows)=>{
-  root.append(el('div','profile-section-title',title));
-  const card=el('div','profile-card');
-  rows.forEach(([label,value])=>{
-   const line=el('div','profile-line'),left=el('div','left');
-   left.append(el('div','label',label),el('div','value',value||'—'));
-   line.append(left);card.append(line);
-  });
-  root.append(card);
- };
- root.append(hero);
- makeSection('Аккаунт Telegram',[
-  ['Telegram ID',u.id?String(u.id):'—'],
-  ['Имя в Telegram',[u.first_name,u.last_name].filter(Boolean).join(' ')||'—'],
+ hero.append(avatar,el('h2','',fullName),el('p','profile-username',username));const pill=el('div','profile-state');pill.append(el('i'),document.createTextNode('Пользователь Mini App'));hero.append(pill);root.append(hero);
+ const actions=el('div','profile-actions'),action=(symbol,label,fn)=>{const btn=el('button','profile-action');btn.type='button';btn.append(el('span','action-icon',symbol),el('span','',label));btn.onclick=fn;actions.append(btn)};
+ action('✎','Изменить ФИО',()=>openRegistration(true));action('ⓘ','О себе',editProfileBio);action('⚙','Настройки',()=>showPage('settings'));root.append(actions);
+ const section=t=>root.append(el('div','profile-section-title',t)),card=()=>{const x=el('div','profile-card');root.append(x);return x};
+ const line=(c,label,value,click)=>{const r=el('div','profile-line'+(click?' clickable':'')),l=el('div','left');l.append(el('div','label',label),el('div','value'+(value?'':' muted'),value||'Не указано'));r.append(l);if(click){r.append(el('span','chevron','›'));r.onclick=click}c.append(r)};
+ section('Информация');let x=card();line(x,'О себе',state.me?.bio||'Добавить информацию о себе',editProfileBio);line(x,'Имя пользователя',username,u.username?()=>copyProfileValue('@'+u.username,'Username'):null);line(x,'Telegram ID',u.id?String(u.id):'—',u.id?()=>copyProfileValue(u.id,'Telegram ID'):null);
+ section('Личные данные');x=card();line(x,'Имя в Telegram',[u.first_name,u.last_name].filter(Boolean).join(' ')||'—');line(x,'ФИО для приложения',registered.full_name||'Не заполнено',()=>openRegistration(true));line(x,'Язык интерфейса',(u.language_code||'ru').toUpperCase());
+ section('Учебный профиль');x=card();line(x,'Учебная группа',state.me?.group||GROUP);line(x,'Регистрация',registered.registered?'Завершена':'Не завершена');
+ const edit=el('button','profile-edit secondary');edit.type='button';edit.textContent='✎  Редактировать ФИО';edit.onclick=()=>openRegistration(true);root.append(edit);
+ root.append(el('p','profile-note','Фото, имя и username берутся из Telegram. Их изменение выполняется в настройках самого Telegram. Описание «О себе» хранится отдельно в профиле Mini App.'));
+}'Имя в Telegram',[u.first_name,u.last_name].filter(Boolean).join(' ')||'—'],
   ['Имя пользователя',username],
   ['Язык интерфейса',(u.language_code||'ru').toUpperCase()]
  ]);
