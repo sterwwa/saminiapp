@@ -191,6 +191,18 @@ async def app_manifest(request: web.Request) -> web.Response:
     )
 
 
+async def app_service_worker(request: web.Request) -> web.Response:
+    path = INDEX.parent / "sw.js"
+    return web.FileResponse(
+        path,
+        headers={
+            "Content-Type": "application/javascript; charset=utf-8",
+            "Service-Worker-Allowed": "/",
+            "Cache-Control": "no-cache",
+        },
+    )
+
+
 async def app_icon(request: web.Request) -> web.Response:
     path = INDEX.parent / "icon.svg"
     return web.Response(
@@ -1361,6 +1373,7 @@ def create_app(deps: Deps) -> web.Application:
     app["deps"] = deps
     app.router.add_get("/", index)
     app.router.add_get("/manifest.webmanifest", app_manifest)
+    app.router.add_get("/sw.js", app_service_worker)
     app.router.add_get("/icon.svg", app_icon)
     app.router.add_get("/apple-touch-icon.png", apple_touch_icon)
     app.router.add_get("/healthz", health)
@@ -1397,4 +1410,3 @@ async def start_server(app: web.Application, host: str, port: int) -> web.AppRun
     await web.TCPSite(runner, host, port).start()
     log.info("Mini App слушает %s:%d", host, port)
     return runner
-
