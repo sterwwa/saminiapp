@@ -401,6 +401,9 @@ async def api_students(request: web.Request) -> web.Response:
                         item["role"] = "moderator"
                     item["is_me"] = uid == viewer
                     result.append(item)
+                # Староста всегда первым; Support (владелец) сразу после него.
+                priority = {"starosta": 0, "moderator": 1, "student": 2}
+                result.sort(key=lambda item: (priority.get(item["role"], 2), item["full_name"].casefold()))
                 return result
             finally:
                 db.close()
