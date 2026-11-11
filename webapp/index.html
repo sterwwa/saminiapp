@@ -73,8 +73,8 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}button
 .home-action{min-height:122px;border:1px solid var(--line);border-radius:17px;background:linear-gradient(145deg,var(--panel2),var(--panel));padding:13px;text-align:left;display:flex;flex-direction:column;align-items:flex-start;gap:9px;box-shadow:0 7px 20px rgba(0,0,0,.18);transition:transform .15s,border-color .15s}
 .home-action:active{transform:scale(.98);border-color:rgba(139,92,246,.5)}
 .home-action.wide{grid-column:1/-1;min-height:86px;flex-direction:row;align-items:center}
-.home-action-icon{width:39px;height:39px;border-radius:12px;display:grid;place-items:center;color:white;font-size:19px;flex:none}
-.home-action-icon svg{width:21px;height:21px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.home-action-icon{width:39px;height:39px;border-radius:12px;display:grid;place-items:center;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent)!important;flex:none}
+.home-action-icon svg{display:block;width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
 .home-action-copy b{display:block;font-size:13px;font-weight:800;color:var(--text)}
 .home-action-copy small{display:block;color:var(--muted);font-size:10px;line-height:1.35;margin-top:3px}
 .home-action.wide .home-action-copy{flex:1}
@@ -152,8 +152,16 @@ async function renderNext(){
  ['Объявления','Важное для группы','⚑','#7040c7','announcements'],
  ['База знаний','Чаты нашей группы','▣','#b96822','knowledge']
  ];
+ const homeIconPaths={
+  students:'<circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.2A4.8 4.8 0 0 1 8.3 13h1.4a4.8 4.8 0 0 1 4.8 4.8V19zM16 5.5a3 3 0 0 1 0 5.8M17 13.5a4.5 4.5 0 0 1 3.5 4.4V19"/>',
+  schedule:'<rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M7.5 3v4M16.5 3v4M3.5 9.5h17M8 13h3M8 17h3M14 13h2M14 17h2"/>',
+  journal:'<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8 3.5v3M16 3.5v3M8.5 11h7M8.5 15h7M8.5 18h4"/>',
+  announcements:'<path d="M4 14V9.5a1.5 1.5 0 0 1 1.5-1.5H9l9-4v16l-9-4H5.5A1.5 1.5 0 0 1 4 14zM9 16l1.5 4H14l-2-5M20 9a4 4 0 0 1 0 5"/>',
+  knowledge:'<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21zM4 5.5v13A2.5 2.5 0 0 1 6.5 16H20M8 7h8M8 11h8"/>'
+ };
  paths.forEach(([title,desc,icon,color,key],i)=>{
-  const b=el('button','home-action'+(key==='knowledge'?' wide':'')),ic=el('span','home-action-icon',icon);ic.style.background=color;
+  const b=el('button','home-action'+(key==='knowledge'?' wide':'')),ic=el('span','home-action-icon');
+  ic.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true">${homeIconPaths[key]||homeIconPaths.knowledge}</svg>`;
   const copy=el('span','home-action-copy');copy.append(el('b','',title),el('small','',desc));b.append(ic,copy);
   b.onclick=()=>{if(key==='students')showPage('students');else if(key==='journal')showPage('journal');else if(key==='schedule')showPage('schedule');else if(key==='settings')showPage('settings');else if(key==='knowledge')renderKnowledge();else toast(title+' — раздел пока не подключён')};
   grid.append(b);
