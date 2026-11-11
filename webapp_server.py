@@ -693,53 +693,65 @@ async def api_profile(request: web.Request) -> web.Response:
     allowed = {"bio", "full_name", "birth_date", "avatar_data"}
     if not isinstance(body, dict) or not body or set(body) - allowed:
         raise web.HTTPBadRequest(text="Некорректные данные профиля")
-    bio = body.get("bio", "")
-    if not isinstance(bio, str):
-        raise web.HTTPBadRequest(text="Некорректное описание профиля")
-    bio = bio.strip()
-    if len(bio) > 70:
-        raise web.HTTPBadRequest(text="Описание должно быть не длиннее 70 символов")
-    full_name = body.get("full_name")
-    if full_name is not None:
+    updates: list[str] = []
+    values: list[object] = []
+    if "bio" in body:
+        bio = body["bio"]
+        if not isinstance(bio, str):
+            raise web.HTTPBadRequest(text="Некорректное описание профиля")
+        bio = bio.strip()
+        if len(bio) > 70:
+            raise web.HTTPBadRequest(text="Описание должно быть не длиннее 70 символов")
+        updates.append("bio = ?")
+        values.append(bio)
+    if "full_name" in body:
+        full_name = body["full_name"]
         if not isinstance(full_name, str):
             raise web.HTTPBadRequest(text="Укажите ФИО")
         full_name = " ".join(full_name.split())
         if len(full_name) > 120 or not FULL_NAME_RE.fullmatch(full_name):
             raise web.HTTPBadRequest(text="Введите ФИО: от двух до четырёх слов, только буквы и дефисы")
-    birth_date = body.get("birth_date", "")
-    if not isinstance(birth_date, str) or (birth_date and not re.fullmatch(r"\\d{4}-\\d{2}-\\d{2}", birth_date)):
-        raise web.HTTPBadRequest(text="Укажите корректную дату рождения")
-    if birth_date:
-        try:
-            parsed_birth = datetime.strptime(birth_date, "%Y-%m-%d").date()
-            if parsed_birth > datetime.now(timezone.utc).date():
-                raise ValueError
-        except ValueError:
-            raise web.HTTPBadRequest(text="Дата рождения не может быть в будущем")
-    avatar_data = body.get("avatar_data", "")
-    if not isinstance(avatar_data, str) or len(avatar_data) > 500000 or (avatar_data and not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}", avatar_data)):
-        raise web.HTTPBadRequest(text="Фото должно быть JPG и не больше 350 КБ")
+        updates.append("full_name = ?")
+        values.append(full_name)
+    if "birth_date" in body:
+        birth_date = body["birth_date"]
+        if not isinstance(birth_date, str) or (birth_date and not re.fullmatch(r"\d{4}-\d{2}-\d{2}", birth_date)):
+            raise web.HTTPBadRequest(text="Укажите корректную дату рождения")
+        if birth_date:
+            try:
+                parsed_birth = datetime.strptime(birth_date, "%Y-%m-%d").date()
+                if parsed_birth > datetime.now(timezone.utc).date():
+                    raise ValueError
+            except ValueError:
+                raise web.HTTPBadRequest(text="Дата рождения не может быть в будущем")
+        updates.append("birth_date = ?")
+        values.append(birth_date)
+    if "avatar_data" in body:
+        avatar_data = body["avatar_data"]
+        if not isinstance(avatar_data, str) or len(avatar_data) > 500000 or (avatar_data and not re.fullmatch(r"data:image/jpeg;base64,[A-Za-z0-9+/]+={0,2}", avatar_data)):
+            raise web.HTTPBadRequest(text="Фото должно быть JPG и не больше 350 КБ")
+        updates.append("avatar_data = ?")
+        values.append(avatar_data)
+    if not updates:
+        raise web.HTTPBadRequest(text="Нет данных для сохранения")
+    updates.append("updated_at = ?")
+    values.extend([datetime.now(timezone.utc).isoformat(timespec="seconds"), uid])
     async with d.users_lock:
         def save():
             db = _db_connect(d)
             try:
-                if not db.execute("SELECT 1 FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone():
-                    return False
-                updates = ["bio = ?"]
-                values = [bio]
-                if full_name is not None:
-                    updates.append("full_name = ?"); values.append(full_name)
-                updates.extend(["birth_date = ?", "avatar_data = ?", "updated_at = ?"])
-                values.extend([birth_date, avatar_data, datetime.now(timezone.utc).isoformat(timespec="seconds"), uid])
-                db.execute(f"UPDATE registered_users SET {', '.join(updates)} WHERE telegram_id = ?", values)
+                cur = db.execute(f"UPDATE registered_users SET {', '.join(updates)} WHERE telegram_id = ?", values)
+                if not cur.rowcount:
+                    return None
                 db.commit()
-                return True
+                row = db.execute("SELECT full_name, bio, birth_date, avatar_data FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone()
+                return dict(row)
             finally:
                 db.close()
         saved = await asyncio.to_thread(save)
     if not saved:
         return web.json_response({"error": "registration_required", "message": "Сначала заполните профиль."}, status=428)
-    return web.json_response({"bio": bio, "full_name": full_name, "birth_date": birth_date, "avatar_data": avatar_data, "saved": True})
+    return web.json_response({**saved, "saved": True})
 
 
 def _journal_roles(d: Deps, uid: int) -> list[str]:
