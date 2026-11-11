@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <meta name="theme-color" content="#090909">
 <title>Вася Бот</title>
 <link rel="manifest" href="/manifest.webmanifest">
@@ -552,6 +552,19 @@ html.auth-pending body>#installLanding{display:flex!important;visibility:visible
 html,body{overscroll-behavior-y:none}
 body{min-height:100vh;min-height:100dvh}
 button,a,input,select,textarea{touch-action:manipulation}
+/* Статус сети и поведение сенсорного экрана */
+html,body{-webkit-text-size-adjust:100%;touch-action:pan-y}
+.connection-banner{
+ position:fixed;z-index:100;top:calc(10px + env(safe-area-inset-top));left:50%;
+ transform:translateX(-50%);width:max-content;max-width:calc(100% - 28px);
+ display:flex;align-items:center;gap:9px;padding:11px 15px;border-radius:14px;
+ color:#fff;background:rgba(35,35,42,.96);border:1px solid rgba(255,255,255,.14);
+ box-shadow:0 10px 30px rgba(0,0,0,.35);font-size:13px;font-weight:750;
+ backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);
+}
+.connection-banner[hidden]{display:none}
+.connection-dot{width:8px;height:8px;border-radius:50%;background:#ff626d;flex:none;box-shadow:0 0 0 4px rgba(255,98,109,.16)}
+
 </style>
 </head>
 <body>
@@ -582,6 +595,7 @@ button,a,input,select,textarea{touch-action:manipulation}
 <button class="tab" data-page="settings" id="settingsTab"><span class="ico" id="settingsTabAvatar"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M4.5 20a7.5 7.5 0 0 1 15 0"/></svg></span>Настройки</button>
 <button class="tab" data-page="admin" id="adminTab" hidden><span class="ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5 19 6v5.2c0 4.3-2.8 7.6-7 9.3-4.2-1.7-7-5-7-9.3V6z"/><path d="m9 12 2 2 4-4"/></svg></span>Админ</button>
 </div></nav><div class="toast" id="toast" role="status"></div>
+<div class="connection-banner" id="connectionBanner" role="status" aria-live="assertive" hidden><span class="connection-dot"></span><span>Нет подключения к интернету</span></div>
 <button id="topNotification" type="button" aria-label="Вася Бот. О,газява,ты вернулся!" hidden><img src="/apple-touch-icon.png" alt=""><span class="top-notification-copy"><span class="top-notification-title">Вася Бот</span><span class="top-notification-subtitle">О,газява,ты вернулся!</span></span></button>
 
 <div class="gate" id="registrationGate" hidden><div class="card gate-card"><h2>Ваш профиль</h2><p>Чтобы продолжить, укажите ФИО. Имя и ограниченные данные Telegram будут сохранены в приложении и доступны администратору. Пароли, коды входа и номер телефона не запрашиваются.</p><form id="registrationForm"><label for="fullName">Фамилия, имя и отчество</label><input id="fullName" type="text" maxlength="120" autocomplete="name" required placeholder="Иванов Иван Иванович"><label class="consent"><input id="nameConsent" type="checkbox" required><span>Я согласен(на) на сохранение моего ФИО и указанных данных Telegram для учёта пользователей приложения.</span></label><p id="registrationError" class="notice" role="alert"></p><button class="primary" type="submit">Сохранить профиль</button></form></div></div>
@@ -1114,7 +1128,12 @@ applyTheme(themePreference);tg?.onEvent?.('themeChanged',()=>{if(themePreference
 if('serviceWorker' in navigator && location.protocol==='https:'){
  navigator.serviceWorker.register('/sw.js',{scope:'/'}).catch(()=>{});
 }
-window.addEventListener('offline',()=>toast('Нет подключения к интернету'));
+const connectionBanner=document.getElementById('connectionBanner');
+function updateConnectionBanner(){if(connectionBanner)connectionBanner.hidden=navigator.onLine!==false}
+window.addEventListener('offline',updateConnectionBanner);
+window.addEventListener('online',()=>{updateConnectionBanner();toast('Подключение восстановлено');refreshAll(true)});
+updateConnectionBanner();
+
 
 </script>
 </body></html>
