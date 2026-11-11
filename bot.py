@@ -7,9 +7,11 @@ import json
 import sqlite3
 import logging
 import os
+import re
 import sys
 import time
 from datetime import date, datetime, timedelta
+from html import unescape
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -624,9 +626,42 @@ async def notify_miniapp_users(pref_key: str, event_key: str, message: str) -> N
     log.info("Личные уведомления %s: отправлено %d из %d", pref_key, delivered, len(targets))
 
 
+def _push_plain_text(value: str, limit: int = 220) -> str:
+    text = unescape(re.sub(r"<[^>]*>", " ", value or ""))
+    text = re.sub(r"\s+", " ", text).strip()
+    return text[:limit - 1].rstrip() + "…" if len(text) > limit else text
+
+
+async def notify_miniapp_push(pref_key: str, event_key: str, title: str, body: str) -> None:
+    """Отправляет Web Push только подписанным пользователям с включённой настройкой события."""
+    public_key = os.getenv("WEBPUSH_VAPID_PUBLIC_KEY", "").strip()
+    private_key = os.getenv("WEBPUSH_VAPID_PRIVATE_KEY", "").strip()
+    subject = os.getenv("WEBPUSH_VAPID_SUBJECT", "https://sa225-miniapp-production.up.railway.app").strip()
+    if not public_key or not private_key:
+        return
+    delivery_key = f"{pref_key}:{event_key}"
+    try:
+        targets = await asyncio.to_thread(pending_subscriptions, DATA_DIR, delivery_key, pref_key)
+    except Exception:
+        log.exception("Не удалось получить push-подписки для %s", pref_key)
+        return
+    payload = {"title": title[:120], "body": _push_plain_text(body), "url": "/?start=notifications",
+               "tag": f"sa225-{pref_key}-{hashlib.sha256(event_key.encode()).hexdigest()[:16]}"}
+    delivered = 0
+    for target in targets:
+        try:
+            if await asyncio.to_thread(send_push, DATA_DIR, target, delivery_key, payload, private_key, subject):
+                delivered += 1
+        except Exception:
+            log.exception("Ошибка Web Push пользователю %s", target.get("telegram_id"))
+        await asyncio.sleep(0.02)
+    log.info("Web Push %s: отправлено %d из %d", pref_key, delivered, len(targets))
+
+
 async def notify_tomorrow(day: date, lessons: list[dict]) -> None:
     message = render_day(day, lessons)
     await notify_miniapp_users("daily_summary", day.isoformat(), message)
+    await notify_miniapp_push("daily_summary", day.isoformat(), f"Расписание на завтра · {day:%d.%m}", message)
 
 
 async def notify_schedule_change(day: date, old: list[dict], new: list[dict]) -> None:
@@ -634,6 +669,7 @@ async def notify_schedule_change(day: date, old: list[dict], new: list[dict]) ->
     raw = json.dumps({"old": old, "new": new}, ensure_ascii=False, sort_keys=True, default=str)
     event_key = day.isoformat() + ":" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
     await notify_miniapp_users("schedule_changes", event_key, change)
+    await notify_miniapp_push("schedule_changes", event_key, f"Изменения расписания · {day:%d.%m}", change)
 
 
 async def daily_send() -> None:
