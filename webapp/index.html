@@ -664,7 +664,7 @@ body{
 .student-name-row b{min-width:0;overflow-wrap:anywhere}
 .student-profile-hero .tg-native-name-row{margin-top:12px}
 .student-profile-hero .tg-native-name-row h2{margin:0}
-</style>
+ .tg-emoji-status{display:inline-grid;place-items:center;min-width:20px;font-size:18px;line-height:1;vertical-align:middle}.tg-premium-badge{display:inline-flex;align-items:center;gap:3px;padding:3px 7px;border-radius:7px;background:rgba(111,75,220,.16);border:1px solid rgba(160,130,255,.28);color:#c9b4ff;font-size:10px;font-weight:800;white-space:nowrap;vertical-align:middle}:root[data-theme="light"] .tg-premium-badge{background:#f0eaff;border-color:#d7c8ff;color:#6d43b5}</style>
 </head>
 <body>
 <script>(()=>{const standalone=window.matchMedia?.('(display-mode: standalone)').matches===true||window.navigator.standalone===true;window.__SA225_STANDALONE__=standalone;if(standalone)document.documentElement.classList.add('pwa-standalone');if(!window.Telegram?.WebApp?.initData&&!standalone)document.documentElement.classList.add('auth-pending')})();</script>
@@ -912,12 +912,14 @@ async function openProfileEditor(){
  const name=addField('ФИО','text',reg.full_name,120,'Фамилия Имя Отчество');name.autocomplete='name';name.required=true;
  const bioLabel=el('label','','О себе');const bio=el('textarea');bio.maxLength=70;bio.value=current.bio||'';bio.placeholder='Расскажите немного о себе';form.append(bioLabel,bio);
  const birthday=addField('Дата рождения','date',current.birth_date||'',null,'');
- const hint=el('p','tg-profile-editor-hint','Сначала используется фотография вашего профиля Telegram. Если загрузить другую, она будет отображаться только в этом приложении. Кнопка «Убрать фотографию» вернёт фото из Telegram. Дата рождения необязательна.');form.append(hint);
+ const profileEmoji=addField('Эмодзи в профиле','text',current.profile_emoji||'',16,'Например: 🌟');profileEmoji.autocomplete='off';
+ const hint=el('p','tg-profile-editor-hint','Эмодзи здесь задаётся отдельно и показывается рядом с именем в приложении — это не синхронизация со статусом Telegram. Premium определяется автоматически по подтверждённым данным Telegram. Фото и дата рождения относятся только к профилю приложения.');form.append(hint);
  const save=el('button','tg-profile-editor-save','Сохранить изменения');save.type='submit';form.append(save);
- form.onsubmit=async e=>{e.preventDefault();const full_name=name.value.trim(),description=bio.value.trim(),birth_date=birthday.value;if(full_name.split(/\s+/).length<2){toast('Укажите фамилию и имя');return}if(description.length>70){toast('О себе — максимум 70 символов');return}save.disabled=true;save.textContent='Сохранение…';try{const data=await api('/api/profile',{method:'POST',body:JSON.stringify({full_name,bio:description,birth_date,avatar_data:avatarData})});current.registration={...reg,full_name:data.full_name};current.bio=data.bio;current.birth_date=data.birth_date;current.avatar_data=data.avatar_data;state.me=current;overlay.remove();renderProfile();toast('Профиль обновлён')}catch(err){toast(err.message||'Не удалось сохранить профиль');save.disabled=false;save.textContent='Сохранить изменения'}};
+ form.onsubmit=async e=>{e.preventDefault();const full_name=name.value.trim(),description=bio.value.trim(),birth_date=birthday.value;if(full_name.split(/\s+/).length<2){toast('Укажите фамилию и имя');return}if(description.length>70){toast('О себе — максимум 70 символов');return}save.disabled=true;save.textContent='Сохранение…';try{const data=await api('/api/profile',{method:'POST',body:JSON.stringify({full_name,bio:description,birth_date,avatar_data:avatarData,profile_emoji:profileEmoji.value.trim()})});current.registration={...reg,full_name:data.full_name};current.bio=data.bio;current.birth_date=data.birth_date;current.avatar_data=data.avatar_data;current.profile_emoji=data.profile_emoji;state.me=current;overlay.remove();renderProfile();toast('Профиль обновлён')}catch(err){toast(err.message||'Не удалось сохранить профиль');save.disabled=false;save.textContent='Сохранить изменения'}};
  panel.append(form);overlay.append(panel);overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});document.body.append(overlay);
 }
-function appendEmojiStatus(parent,status){if(!status||!status.emoji)return;const mark=el('span','tg-emoji-status',status.emoji);mark.setAttribute('aria-label','Эмодзи-статус Telegram');mark.title='Эмодзи-статус Telegram';parent.append(mark)}
+function appendEmojiStatus(parent,emoji){if(!emoji)return;const mark=el('span','tg-emoji-status',emoji);mark.setAttribute('aria-label','Эмодзи профиля приложения');mark.title='Эмодзи профиля приложения';parent.append(mark)}
+function appendPremiumBadge(parent,isPremium){if(!isPremium)return;const mark=el('span','tg-premium-badge','✦ Premium');mark.setAttribute('aria-label','Telegram Premium');mark.title='Telegram Premium';parent.append(mark)}
 function renderProfile(){
  const root=$('#profileContent');root.replaceChildren();
  const u=state.me?.user||{},registered=state.me?.registration||{};
@@ -932,7 +934,7 @@ function renderProfile(){
  const editBtn=el('button','tg-profile-edit-trigger','✎');editBtn.type='button';editBtn.title='Изменить профиль';editBtn.setAttribute('aria-label','Изменить профиль');editBtn.onclick=openProfileEditor;hero.append(editBtn);
  const avatar=el('div','tg-native-avatar',initial);
  if(photo){const img=el('img');img.src=photo;img.alt='Фото профиля';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img)}
- const name=el('h2','tg-native-name',fullName),nameRow=el('div','tg-native-name-row');nameRow.append(name);appendEmojiStatus(nameRow,state.me?.emoji_status);
+ const name=el('h2','tg-native-name',fullName),nameRow=el('div','tg-native-name-row');nameRow.append(name);appendEmojiStatus(nameRow,state.me?.profile_emoji);appendPremiumBadge(nameRow,u.is_premium);
  const uname=el('div','tg-native-username',username);
  hero.append(avatar,nameRow,uname);
  if(state.me?.group)hero.append(el('div','tg-native-group','Группа '+state.me.group));
@@ -962,6 +964,7 @@ function renderProfile(){
  line(box,'♙','Имя в Telegram',tgName||'Не указано',null,!tgName);
  line(box,'✎','ФИО в приложении',registered.full_name||'Не заполнено',openProfileEditor,!registered.full_name);
  line(box,'▦','Дата рождения',state.me?.birth_date?new Date(state.me.birth_date+'T00:00:00').toLocaleDateString('ru-RU'):'Не указана',openProfileEditor,!state.me?.birth_date);
+ line(box,'✦','Эмодзи в профиле',state.me?.profile_emoji||'Добавить эмодзи',openProfileEditor,!state.me?.profile_emoji);
  line(box,'文','Язык интерфейса',(u.language_code||'ru').toUpperCase(),null);
  section('Учебный профиль');
  box=card();
@@ -997,7 +1000,7 @@ async function renderStudents(){
    avatar.type='button';avatar.title='Открыть профиль '+u.full_name;avatar.setAttribute('aria-label','Открыть профиль '+u.full_name);
    if(typeof u.avatar_data==='string'&&u.avatar_data.startsWith('data:image/')){const photo=el('img');photo.src=u.avatar_data;photo.alt='';photo.onerror=()=>{photo.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(photo)}
    avatar.onclick=()=>openStudentProfile(u);
-   const nameRow=el('div','student-name-row');nameRow.append(el('b','',u.full_name+(u.is_me?' · Вы':'')));appendEmojiStatus(nameRow,u.emoji_status);info.append(nameRow,el('small','',u.username?'@'+u.username:'Участник группы'));head.append(avatar,info);card.append(head);
+   const nameRow=el('div','student-name-row');nameRow.append(el('b','',u.full_name+(u.is_me?' · Вы':'')));appendEmojiStatus(nameRow,u.profile_emoji);appendPremiumBadge(nameRow,u.is_premium);info.append(nameRow,el('small','',u.username?'@'+u.username:'Участник группы'));head.append(avatar,info);card.append(head);
    const row=el('div','student-role-row'),badges=el('div','role-badges');
    roles.forEach(role=>badges.append(makeRoleBadge(role,labels[role]||'Студент')));
    row.append(badges);card.append(row);
@@ -1022,7 +1025,7 @@ function openStudentProfile(student){
  const usernameButton=el('button','student-profile-username',username?'@'+username:'Имя пользователя Telegram не указано');
  usernameButton.type='button';usernameButton.disabled=!username;usernameButton.title=username?'Нажмите, чтобы скопировать username':'Username не указан';
  usernameButton.onclick=()=>copyProfileValue('@'+username,'Username');
- const nameRow=el('div','tg-native-name-row'),nameHeading=el('h2','',fullName);nameRow.append(nameHeading);appendEmojiStatus(nameRow,student.emoji_status);hero.append(avatar,nameRow,usernameButton);
+ const nameRow=el('div','tg-native-name-row'),nameHeading=el('h2','',fullName);nameRow.append(nameHeading);appendEmojiStatus(nameRow,student.profile_emoji);appendPremiumBadge(nameRow,student.is_premium);hero.append(avatar,nameRow,usernameButton);
  const roles=Array.isArray(student.roles)&&student.roles.length?student.roles:[student.role||'student'];
  const labels={student:'Студент',deputy:'Заместитель старосты',starosta:'Староста',moderator:'Модератор',support:'Разработчик'};
  const badges=el('div','role-badges');roles.forEach(role=>badges.append(makeRoleBadge(role,labels[role]||'Студент')));hero.append(badges);
@@ -1031,7 +1034,7 @@ function openStudentProfile(student){
  actions.append(dmBtn);hero.append(actions);sheet.append(hero);
  const info=el('div','student-profile-info');
  const addRow=(label,value,action)=>{const row=el('div','info-row');row.append(el('span','',label));if(action){const btn=el('button','student-profile-value',value||'Не указано');btn.type='button';btn.onclick=action;row.append(btn)}else row.append(el('b','',value||'Не указано'));info.append(row)};
- addRow('Группа',GROUP);addRow('Роль',roles.map(r=>labels[r]||r).join(', '));addRow('Telegram',username?'@'+username:'Не указан',username?()=>copyProfileValue('@'+username,'Username'):null);addRow('Дата рождения',student.birth_date?new Date(student.birth_date+'T00:00:00').toLocaleDateString('ru-RU'):'Не указана');addRow('ID пользователя',String(student.telegram_id||''));
+ addRow('Группа',GROUP);addRow('Роль',roles.map(r=>labels[r]||r).join(', '));addRow('Telegram Premium',student.is_premium?'Есть':'Нет');addRow('Эмодзи профиля',student.profile_emoji||'Не задано');addRow('Telegram',username?'@'+username:'Не указан',username?()=>copyProfileValue('@'+username,'Username'):null);addRow('Дата рождения',student.birth_date?new Date(student.birth_date+'T00:00:00').toLocaleDateString('ru-RU'):'Не указана');addRow('ID пользователя',String(student.telegram_id||''));
  sheet.append(info);
  const bio=el('div','student-profile-info'),bioTitle=el('div','tg-profile-section','О себе');bio.append(bioTitle,el('div','student-profile-bio',String(student.bio||'Пользователь пока ничего не рассказал о себе.')));sheet.append(bio);
  overlay.append(sheet);overlay.addEventListener('click',event=>{if(event.target===overlay)overlay.remove()});document.body.append(overlay);
