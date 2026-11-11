@@ -873,9 +873,10 @@ async def api_journal_history(request: web.Request) -> web.Response:
 
 async def api_journal_send_today_report(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
+    # Отчёт отправляется только тому пользователю, который вызвал этот endpoint.
     uid = int((request.get("user") or {}).get("id", 0))
     if not _journal_can_edit(d, uid):
-        return web.json_response({"error": "forbidden", "message": "Отправлять отчёт могут только староста и зам. старосты."}, status=403)
+        return web.json_response({"error": "forbidden", "message": "Запрашивать отчёт могут только староста и зам. старосты."}, status=403)
     try:
         body = await request.json()
     except (json.JSONDecodeError, ValueError):
@@ -890,48 +891,38 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
         def read_report():
             db = _db_connect(d)
             try:
-                sessions = db.execute("""
-                    SELECT lesson_number, subject
-                    FROM journal_sessions
-                    WHERE lesson_date = ? AND subject <> ''
-                    ORDER BY CAST(lesson_number AS INTEGER), lesson_number
+                students = db.execute("""
+                    SELECT telegram_id, full_name
+                    FROM registered_users
+                    WHERE full_name IS NOT NULL AND TRIM(full_name) <> ''
+                    ORDER BY full_name COLLATE NOCASE
+                """).fetchall()
+                absent = db.execute("""
+                    SELECT DISTINCT student_id
+                    FROM journal_absences
+                    WHERE lesson_date = ?
                 """, (report_day.isoformat(),)).fetchall()
-                absences = db.execute("""
-                    SELECT ja.lesson_number, ru.full_name
-                    FROM journal_absences ja
-                    JOIN registered_users ru ON ru.telegram_id = ja.student_id
-                    WHERE ja.lesson_date = ?
-                      AND ru.full_name IS NOT NULL AND TRIM(ru.full_name) <> ''
-                    ORDER BY CAST(ja.lesson_number AS INTEGER), ru.full_name COLLATE NOCASE
-                """, (report_day.isoformat(),)).fetchall()
-                absent_by_lesson = {}
-                for row in absences:
-                    absent_by_lesson.setdefault(str(row["lesson_number"]), [])
-                    name = str(row["full_name"]).strip()
-                    if name not in absent_by_lesson[str(row["lesson_number"])]:
-                        absent_by_lesson[str(row["lesson_number"])].append(name)
-                return [(str(row["lesson_number"]), str(row["subject"]).strip()) for row in sessions], absent_by_lesson
+                return students, {int(row["student_id"]) for row in absent}
             finally:
                 db.close()
-        sessions, absent_by_lesson = await asyncio.to_thread(read_report)
+        students, absent_ids = await asyncio.to_thread(read_report)
 
-    absent_names = []
-    seen_names = set()
-    for lesson_number, _subject in sessions:
-        for name in absent_by_lesson.get(lesson_number, []):
-            if name not in seen_names:
-                seen_names.add(name)
-                absent_names.append(name)
+    present_names = [
+        str(row["full_name"]).strip()
+        for row in students
+        if int(row["telegram_id"]) not in d.admin_ids
+        and int(row["telegram_id"]) not in absent_ids
+    ]
 
     lines = [
-        f"📋 Отсутствующие за {report_day:%d.%m.%Y}",
+        f"📋 Присутствующие за {report_day:%d.%m.%Y}",
         f"Группа: {d.group}:"
     ]
-    if absent_names:
-        lines.extend(f"• {name}" for name in absent_names)
+    if present_names:
+        lines.extend(f"• {name}" for name in present_names)
     else:
-        lines.append("Отсутствующих нет.")
-    message = "\n".join(lines).strip()
+        lines.append("Список присутствующих пуст.")
+    message = "\\n".join(lines).strip()
 
     try:
         async with ClientSession(timeout=ClientTimeout(total=12)) as session:
@@ -982,7 +973,7 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
 
         asyncio.create_task(delete_report_later())
 
-    return web.json_response({"sent": True, "date": report_day.isoformat(), "sessions_count": len(sessions)})
+    return web.json_response({"sent": True, "date": report_day.isoformat(), "sessions_count": 0})
 
 
 async def api_journal_save(request: web.Request) -> web.Response:
