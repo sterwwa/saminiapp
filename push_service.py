@@ -41,7 +41,7 @@ def remove_subscription(data_dir: Path, telegram_id: int, endpoint: str) -> None
         db.close()
 
 
-def pending_subscriptions(data_dir: Path, event_key: str) -> list[dict]:
+def pending_subscriptions(data_dir: Path, event_key: str, pref_key: str = "lesson_reminders") -> list[dict]:
     try:
         prefs = json.loads((data_dir / "miniapp_preferences.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -61,7 +61,7 @@ def pending_subscriptions(data_dir: Path, event_key: str) -> list[dict]:
         result = []
         for uid, endpoint, raw in rows:
             user_prefs = prefs.get(str(uid), {}) if isinstance(prefs, dict) else {}
-            if isinstance(user_prefs, dict) and user_prefs.get("lesson_reminders", True) is False:
+            if isinstance(user_prefs, dict) and user_prefs.get(pref_key, True) is False:
                 continue
             if db.execute("SELECT 1 FROM webpush_deliveries WHERE telegram_id=? AND endpoint=? AND event_key=?",
                           (uid, endpoint, event_key)).fetchone():
