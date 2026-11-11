@@ -683,7 +683,7 @@ body{
 }
 
 
-</style>
+.role-manage-btn{width:100%;display:flex;align-items:center;gap:9px;margin-top:12px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);color:var(--text);font-size:12px;font-weight:750;text-align:left}.role-manage-btn:active{transform:scale(.99)}.role-manage-icon{width:25px;height:25px;display:grid;place-items:center;border-radius:8px;background:rgba(139,92,246,.16);color:#b99aff;font-size:15px}.role-manage-count{margin-left:auto;min-width:22px;height:22px;padding:0 6px;display:grid;place-items:center;border-radius:7px;background:var(--panel);color:var(--muted);font-size:11px}.role-manager-backdrop{position:fixed;z-index:90;inset:0;display:flex;align-items:flex-end;justify-content:center;padding:14px 12px calc(14px + env(safe-area-inset-bottom));background:rgba(0,0,0,.7);backdrop-filter:blur(9px)}.role-manager-sheet{width:min(100%,500px);max-height:min(84vh,680px);overflow:auto;padding:19px;background:var(--bg);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);animation:appear .18s ease}.role-manager-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:20px}.role-manager-kicker{font-size:10px;font-weight:850;letter-spacing:1.1px;color:var(--muted)}.role-manager-heading h2{margin:5px 0 3px;font-size:21px}.role-manager-heading p{margin:0;color:var(--muted);font-size:13px}.role-manager-close{width:34px;height:34px;flex:none;border-radius:50%;background:var(--panel2);color:var(--text);font-size:22px}.role-manager-section-title{margin:0 0 10px;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}.role-manager-options{display:grid;gap:8px}.role-manager-option{width:100%;display:flex;align-items:center;gap:11px;padding:12px;border:1px solid var(--line);border-radius:13px;background:var(--panel);color:var(--text);text-align:left}.role-manager-option.is-selected{border-color:rgba(167,139,250,.65);background:rgba(139,92,246,.09)}.role-manager-check{width:25px;height:25px;flex:none;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--muted);font-weight:900}.role-manager-option.is-selected .role-manager-check{background:#8b5cf6;border-color:#8b5cf6;color:#fff}.role-manager-copy{display:grid;gap:3px}.role-manager-copy b{font-size:13px}.role-manager-copy small{font-size:11px;color:var(--muted)}.role-manager-starosta .role-manager-copy b{color:#e6b85c}.role-manager-deputy .role-manager-copy b{color:#b99aff}.role-manager-moderator .role-manager-copy b{color:#ff858d}.role-manager-note{display:flex;gap:9px;margin-top:14px;padding:11px;border-radius:11px;background:var(--panel2);color:var(--muted);font-size:11px;line-height:1.45}.role-manager-note span:first-child{color:var(--accent);font-size:14px}.role-manager-actions{display:flex;gap:9px;margin-top:18px}.role-manager-actions button{flex:1;min-height:43px;padding:10px;border-radius:11px;font-size:12px;font-weight:800}.role-manager-cancel{background:var(--panel2);border:1px solid var(--line);color:var(--text)}.role-manager-save{background:var(--accent);color:#fff}.role-manager-save:disabled{opacity:.6}</style>
 </head>
 <body>
 <script>(()=>{const standalone=window.matchMedia?.('(display-mode: standalone)').matches===true||window.navigator.standalone===true;window.__SA225_STANDALONE__=standalone;if(standalone)document.documentElement.classList.add('pwa-standalone');if(!window.Telegram?.WebApp?.initData&&!standalone)document.documentElement.classList.add('auth-pending')})();</script>
@@ -1045,6 +1045,33 @@ function renderProfile(){
  line(box,'✓','Статус регистрации',registered.registered?'Завершена':'Не завершена',null,!registered.registered);
  root.append(el('p','tg-native-note','Фото, ФИО, описание и дата рождения относятся только к профилю приложения. Изменения не меняют аккаунт Telegram.'));
 }
+function openRoleManager(user,currentRoles,editableRoles,labels){
+ const overlay=el('div','role-manager-backdrop'),sheet=el('section','role-manager-sheet');
+ const top=el('div','role-manager-top'),heading=el('div','role-manager-heading'),close=el('button','role-manager-close','×');
+ heading.append(el('div','role-manager-kicker','УПРАВЛЕНИЕ УЧАСТНИКОМ'),el('h2','','Роли участника'),el('p','',user.full_name));
+ close.type='button';close.setAttribute('aria-label','Закрыть');close.onclick=()=>overlay.remove();top.append(heading,close);sheet.append(top);
+ sheet.append(el('div','role-manager-section-title','Назначенные роли'));
+ const selected=new Set(currentRoles.filter(r=>editableRoles.some(([key])=>key===r)));
+ const list=el('div','role-manager-options');
+ const descriptions={deputy:'Помощь старосте и организационные задачи',starosta:'Ответственный за группу и объявления',moderator:'Модерация и порядок в приложении'};
+ editableRoles.forEach(([value,label])=>{
+  const option=el('button','role-manager-option role-manager-'+value),mark=el('span','role-manager-check'),copy=el('span','role-manager-copy');
+  option.type='button';option.setAttribute('aria-pressed',String(selected.has(value)));
+  copy.append(el('b','',label),el('small','',descriptions[value]||'Дополнительные права участника'));
+  mark.textContent=selected.has(value)?'✓':'+';option.append(mark,copy);
+  option.onclick=()=>{if(selected.has(value))selected.delete(value);else selected.add(value);option.classList.toggle('is-selected',selected.has(value));option.setAttribute('aria-pressed',String(selected.has(value)));mark.textContent=selected.has(value)?'✓':'+'};
+  if(selected.has(value))option.classList.add('is-selected');list.append(option);
+ });
+ sheet.append(list);
+ const note=el('div','role-manager-note');note.append(el('span','','ⓘ'),el('span','','У участника может быть несколько ролей одновременно. Роль «Разработчик» закреплена за владельцем приложения и здесь не редактируется.'));sheet.append(note);
+ const actions=el('div','role-manager-actions'),cancel=el('button','role-manager-cancel','Отмена'),save=el('button','role-manager-save','Сохранить изменения');
+ cancel.type='button';cancel.onclick=()=>overlay.remove();save.type='button';
+ save.onclick=async()=>{save.disabled=true;save.textContent='Сохраняем…';try{await api('/api/admin/users/'+user.telegram_id+'/role',{method:'PUT',body:JSON.stringify({roles:editableRoles.filter(([key])=>selected.has(key)).map(([key])=>key)})});overlay.remove();toast('Роли обновлены');renderStudents()}catch(e){toast(e.message);save.disabled=false;save.textContent='Сохранить изменения'}};
+ actions.append(cancel,save);sheet.append(actions);overlay.append(sheet);
+ overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});
+ const esc=e=>{if(e.key==='Escape'){overlay.remove();document.removeEventListener('keydown',esc)}};document.addEventListener('keydown',esc);
+ document.body.append(overlay);
+}
 async function renderStudents(){
  const root=$('#studentsContent'),sortButton=$('#studentsSortToggle');root.replaceChildren(el('div','skeleton'));
  if(sortButton){sortButton.textContent=studentsSort==='roles'?'⇅ По ролям':'⇅ По алфавиту';sortButton.setAttribute('aria-label','Текущая сортировка: '+(studentsSort==='roles'?'по ролям':'по алфавиту')+'. Нажмите, чтобы изменить.')}
@@ -1078,11 +1105,11 @@ async function renderStudents(){
    roles.forEach(role=>badges.append(makeRoleBadge(role,labels[role]||'Студент')));
    row.append(badges);card.append(row);
    if(admin&&!u.is_me&&u.role!=='support'){
-    const editor=el('div','role-editor'),checks=[];
-    editableRoles.forEach(([value,label])=>{const wrap=el('label','role-option'),input=el('input');input.type='checkbox';input.checked=roles.includes(value);input.value=value;wrap.append(input,document.createTextNode(label));editor.append(wrap);checks.push(input)});
-    const save=el('button','role-save','Сохранить роли');
-    save.onclick=async()=>{save.disabled=true;try{const selected=checks.filter(x=>x.checked).map(x=>x.value);await api('/api/admin/users/'+u.telegram_id+'/role',{method:'PUT',body:JSON.stringify({roles:selected})});toast('Роли обновлены');renderStudents()}catch(e){toast(e.message);save.disabled=false}};
-    editor.append(save);card.append(editor);
+    const manage=el('button','role-manage-btn');
+    const current=roles.filter(r=>r!=='student');
+    manage.type='button';manage.innerHTML='<span class="role-manage-icon">✦</span><span>Управлять ролями</span><span class="role-manage-count">'+current.length+'</span>';
+    manage.onclick=()=>openRoleManager(u,roles,editableRoles,labels);
+    card.append(manage);
    }
    root.append(card);
   });
