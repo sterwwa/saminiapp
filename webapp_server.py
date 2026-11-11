@@ -931,7 +931,7 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
         lines.extend(f"• {name}" for name in absent_names)
     else:
         lines.append("Отсутствующих нет.")
-    message = "\\n".join(lines).strip()
+    message = "\n".join(lines).strip()
 
     try:
         async with ClientSession(timeout=ClientTimeout(total=12)) as session:
