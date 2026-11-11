@@ -1377,30 +1377,35 @@ function showTelegramLogin(){
  widget.append(script);
 }
 async function refreshAll(force=false){if(state.busy)return;state.busy=true;state.error=null;try{await loadMe();document.documentElement.classList.remove('auth-pending');$('#installLanding')?.remove();if(!state.me.access?.authorized){$('#registrationGate').hidden=true;openAccessGate();return}$('#accessGate').hidden=true;if(!state.me.registration?.registered){openRegistration();return}$('#registrationGate').hidden=true;if(state.view==='week')await loadWeek(force);else await loadDay(force);renderSchedule();if(state.page==='next')renderNext();if(state.page==='students')renderStudents();if(state.page==='journal')renderJournal(state.sel||now().date);if(state.page==='profile')renderProfile();if(state.page==='settings')renderSettings()}catch(e){state.error=e.message;if(e.status===401&&!tg?.initData){if(isStandalone)showTelegramLogin();/* regular browser onboarding waits for the user's login choice */}renderSchedule();if(state.page==='next')$('#nextContent').replaceChildren(errorBox(e.message));if(state.page==='students')$('#studentsContent').replaceChildren(errorBox(e.message));if(state.page==='journal')$('#journalContent').replaceChildren(errorBox(e.message));if(state.page==='profile'||state.page==='settings'){$('#profileContent').replaceChildren(errorBox(e.message));$('#settingsContent').replaceChildren(errorBox(e.message))}}finally{state.busy=false}}
-$('#viewSwitch').addEventListener('click',e=>{const b=e.target.closest('button[data-view]');if(b&&state.view!==b.dataset.view){buzz();setView(b.dataset.view);refreshAll(true)}});let settingsTapCount=0,settingsTapStarted=0;document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.page==='settings'&&state.me?.is_admin){const t=Date.now();if(!settingsTapStarted||t-settingsTapStarted>2200){settingsTapStarted=t;settingsTapCount=1}else settingsTapCount++;if(settingsTapCount>=5){settingsTapCount=0;settingsTapStarted=0;showPage('admin');return}}else if(b.dataset.page!=='settings'){settingsTapCount=0;settingsTapStarted=0}showPage(b.dataset.page)}));$('#studentsSortToggle').addEventListener('click',()=>{studentsSort=studentsSort==='roles'?'alpha':'roles';buzz();renderStudents()});let appHiddenAt=0;document.addEventListener('visibilitychange',()=>{if(document.hidden){appHiddenAt=Date.now();return}refreshAll(false);if(appHiddenAt&&Date.now()-appHiddenAt>1500){showTopNotification();appHiddenAt=0}});window.addEventListener('pageshow',()=>{if(appHiddenAt&&Date.now()-appHiddenAt>1500){showTopNotification();appHiddenAt=0}});window.addEventListener('online',()=>refreshAll(true));let sx=0,sy=0,navSwipeStart=false;
+$('#viewSwitch').addEventListener('click',e=>{const b=e.target.closest('button[data-view]');if(b&&state.view!==b.dataset.view){buzz();setView(b.dataset.view);refreshAll(true)}});let settingsTapCount=0,settingsTapStarted=0;document.querySelectorAll('.tab').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.page==='settings'&&state.me?.is_admin){const t=Date.now();if(!settingsTapStarted||t-settingsTapStarted>2200){settingsTapStarted=t;settingsTapCount=1}else settingsTapCount++;if(settingsTapCount>=5){settingsTapCount=0;settingsTapStarted=0;showPage('admin');return}}else if(b.dataset.page!=='settings'){settingsTapCount=0;settingsTapStarted=0}showPage(b.dataset.page)}));$('#studentsSortToggle').addEventListener('click',()=>{studentsSort=studentsSort==='roles'?'alpha':'roles';buzz();renderStudents()});let appHiddenAt=0;document.addEventListener('visibilitychange',()=>{if(document.hidden){appHiddenAt=Date.now();return}refreshAll(false);if(appHiddenAt&&Date.now()-appHiddenAt>1500){showTopNotification();appHiddenAt=0}});window.addEventListener('pageshow',()=>{if(appHiddenAt&&Date.now()-appHiddenAt>1500){showTopNotification();appHiddenAt=0}});window.addEventListener('online',()=>refreshAll(true));let sx=0,sy=0,navSwipeStart=false,weekSwipeStart=false;
  const swipeIgnored='.bottom input,.bottom select';
  document.addEventListener('touchstart',e=>{
-  navSwipeStart=e.touches.length===1&&!!e.target.closest('.bottom')&&!e.target.closest(swipeIgnored);
-  if(!navSwipeStart)return;
+  if(e.touches.length!==1){navSwipeStart=false;weekSwipeStart=false;return}
+  navSwipeStart=!!e.target.closest('.bottom')&&!e.target.closest(swipeIgnored);
+  weekSwipeStart=state.page==='schedule'&&!!e.target.closest('.daystrip');
+  if(!navSwipeStart&&!weekSwipeStart)return;
   sx=e.touches[0].clientX;sy=e.touches[0].clientY;
  },{passive:true});
  document.addEventListener('touchmove',e=>{
-  if(!navSwipeStart||e.touches.length!==1)return;
+  if((!navSwipeStart&&!weekSwipeStart)||e.touches.length!==1)return;
   const dx=e.touches[0].clientX-sx,dy=e.touches[0].clientY-sy;
   if(Math.abs(dx)>12&&Math.abs(dx)>Math.abs(dy)*1.15)e.preventDefault();
  },{passive:false});
  document.addEventListener('touchend',e=>{
-  if(!navSwipeStart)return;
+  if(!navSwipeStart&&!weekSwipeStart)return;
   const dx=e.changedTouches[0].clientX-sx,dy=e.changedTouches[0].clientY-sy;
   const horizontal=Math.abs(dx)>=55&&Math.abs(dx)>Math.abs(dy)*1.2;
-  if(horizontal){
+  if(horizontal&&weekSwipeStart&&state.page==='schedule'){
+   changeDate(add(state.sel,dx<0?7:-7));
+   e.preventDefault();
+  }else if(horizontal&&navSwipeStart){
    const tabs=[...document.querySelectorAll('.bottom .tab[data-page]')].filter(b=>!b.hidden&&b.dataset.page!=='admin');
    const current=state.page==='admin'?'settings':state.page,index=tabs.findIndex(b=>b.dataset.page===current),next=tabs[index+(dx<0?1:-1)];
    if(next){e.preventDefault();showPage(next.dataset.page)}
   }
-  navSwipeStart=false;
+  navSwipeStart=false;weekSwipeStart=false;
  },{passive:false});
- document.addEventListener('touchcancel',()=>{navSwipeStart=false},{passive:true});
+ document.addEventListener('touchcancel',()=>{navSwipeStart=false;weekSwipeStart=false},{passive:true});
  setInterval(()=>{if(!document.hidden&&state.data){if(state.page==='schedule')renderSchedule();if(state.page==='next')renderNext()}},30000);
 const start=(tg?.initDataUnsafe?.start_param||new URLSearchParams(location.search).get('start')||'');state.sel=add(now().date,start==='tomorrow'?1:0);if(start==='week')state.view='week';if(start==='next')state.page='next';if(start==='profile'||start==='settings')state.page='settings';if(state.view==='week')setView('week');if(state.page!=='schedule')showPage(state.page);refreshAll();
 applyTheme(themePreference);tg?.onEvent?.('themeChanged',()=>{if(themePreference==='telegram')applyTheme('telegram')});
