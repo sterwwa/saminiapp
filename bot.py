@@ -230,7 +230,18 @@ async def cmd_start(m: Message) -> None:
             except TelegramAPIError as e:
                 log.info("Не удалось удалить прежнее приветствие в чате %s: %s", m.chat.id, e)
 
-    await m.answer(HELP, reply_markup=keyboard(private_chat=m.chat.type == "private"))
+    is_private = m.chat.type == "private"
+    if is_private:
+        app_url = WEBAPP_URL or "https://sa225-miniapp-production.up.railway.app"
+        try:
+            # Назначаем кнопку меню именно для этого личного чата при каждом /start.
+            await bot.set_chat_menu_button(
+                chat_id=m.chat.id,
+                menu_button=MenuButtonWebApp(text="Открыть приложение", web_app=WebAppInfo(url=app_url)),
+            )
+        except TelegramAPIError as e:
+            log.warning("Не удалось назначить кнопку Mini App для чата %s: %s", m.chat.id, e)
+    await m.answer(HELP, reply_markup=keyboard(private_chat=is_private))
 
 
 @dp.message(Command("c"))
