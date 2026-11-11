@@ -211,6 +211,23 @@ async function renderJournal(){
    const heading=el('div','section-head');
    heading.append(el('h2','','Занятия за '+selected.split('-').reverse().join('.')),el('span','tag',sessions.length+' пар'));
    content.append(heading);
+   if(canEdit){
+    const reportBtn=el('button','journal-save','✉️ Получить отчёт в ЛС');
+    reportBtn.type='button';
+    reportBtn.onclick=async()=>{
+     reportBtn.disabled=true;reportBtn.textContent='Отправка…';
+     try{
+      await api('/api/journal/send-today-report',{method:'POST',body:JSON.stringify({date:selected})});
+      toast('Отчёт за выбранный день отправлен в личные сообщения');
+      reportBtn.textContent='✓ Отчёт отправлен';
+     }catch(e){
+      toast(e.message||'Не удалось отправить отчёт');
+      reportBtn.textContent='✉️ Повторить отправку';reportBtn.disabled=false;
+     }
+    };
+    content.append(reportBtn);
+   }
+
    if(!sessions.length){
     const box=el('div','empty');box.append(el('div','emoji','📅'),el('h3','','Пар за этот день нет'),el('p','','В сохранённой истории расписания на выбранную дату занятий не найдено.'));
     content.append(box);return;
