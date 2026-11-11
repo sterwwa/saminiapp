@@ -352,8 +352,9 @@ async function openProfileEditor(){
  const close=el('button','tg-profile-editor-close','×');close.type='button';close.setAttribute('aria-label','Закрыть');close.onclick=()=>overlay.remove();head.append(close);panel.append(head);
  const photoRow=el('div','tg-profile-photo-edit'),preview=el('div','tg-profile-photo-preview');
  const initial=(reg.full_name||[tu.first_name,tu.last_name].filter(Boolean).join(' ')||'П').trim().charAt(0).toLocaleUpperCase('ru');
+ const telegramPhoto=current.user?.photo_url||tu.photo_url||'';
  let avatarData=current.avatar_data||'';
- const paint=()=>{preview.replaceChildren();if(avatarData){const im=el('img');im.src=avatarData;im.alt='Предпросмотр аватара';preview.append(im)}else preview.textContent=initial};
+ const paint=()=>{preview.replaceChildren();const src=avatarData||telegramPhoto;if(src){const im=el('img');im.src=src;im.alt=avatarData?'Фото профиля приложения':'Фото из Telegram';im.referrerPolicy='no-referrer';im.onerror=()=>{preview.textContent=initial};preview.append(im)}else preview.textContent=initial};
  paint();
  const photoBtns=el('div','tg-profile-photo-buttons'),pick=el('button','','Изменить фотографию');pick.type='button';
  const remove=el('button','','Убрать фотографию');remove.type='button';
@@ -366,7 +367,7 @@ async function openProfileEditor(){
  const name=addField('ФИО','text',reg.full_name,120,'Фамилия Имя Отчество');name.autocomplete='name';name.required=true;
  const bioLabel=el('label','','О себе');const bio=el('textarea');bio.maxLength=70;bio.value=current.bio||'';bio.placeholder='Расскажите немного о себе';form.append(bioLabel,bio);
  const birthday=addField('Дата рождения','date',current.birth_date||'',null,'');
- const hint=el('p','tg-profile-editor-hint','Дата рождения необязательна. Фото и введённые данные сохраняются только в профиле этого приложения.');form.append(hint);
+ const hint=el('p','tg-profile-editor-hint','Сначала используется фотография вашего профиля Telegram. Если загрузить другую, она будет отображаться только в этом приложении. Кнопка «Убрать фотографию» вернёт фото из Telegram. Дата рождения необязательна.');form.append(hint);
  const save=el('button','tg-profile-editor-save','Сохранить изменения');save.type='submit';form.append(save);
  form.onsubmit=async e=>{e.preventDefault();const full_name=name.value.trim(),description=bio.value.trim(),birth_date=birthday.value;if(full_name.split(/\s+/).length<2){toast('Укажите фамилию и имя');return}if(description.length>70){toast('О себе — максимум 70 символов');return}save.disabled=true;save.textContent='Сохранение…';try{const data=await api('/api/profile',{method:'POST',body:JSON.stringify({full_name,bio:description,birth_date,avatar_data:avatarData})});current.registration={...reg,full_name:data.full_name};current.bio=data.bio;current.birth_date=data.birth_date;current.avatar_data=data.avatar_data;state.me=current;overlay.remove();renderProfile();toast('Профиль обновлён')}catch(err){toast(err.message||'Не удалось сохранить профиль');save.disabled=false;save.textContent='Сохранить изменения'}};
  panel.append(form);overlay.append(panel);overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});document.body.append(overlay);
@@ -379,7 +380,8 @@ function renderProfile(){
  const username=u.username?'@'+u.username:'Имя пользователя не задано';
  const initial=(fullName.trim().charAt(0)||'П').toLocaleUpperCase('ru');
  const tu=tg?.initDataUnsafe?.user||{};
- const photo=state.me?.avatar_data|| (typeof tu.photo_url==='string'&&tu.photo_url.startsWith('https://')?tu.photo_url:'');
+ const telegramPhoto=state.me?.user?.photo_url||tu.photo_url||'';
+ const photo=state.me?.avatar_data|| (typeof telegramPhoto==='string'&&telegramPhoto.startsWith('https://')?telegramPhoto:'');
  const hero=el('section','tg-native-hero');
  const editBtn=el('button','tg-profile-edit-trigger','✎');editBtn.type='button';editBtn.title='Изменить профиль';editBtn.setAttribute('aria-label','Изменить профиль');editBtn.onclick=openProfileEditor;hero.append(editBtn);
  const avatar=el('div','tg-native-avatar',initial);
