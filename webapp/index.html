@@ -516,7 +516,7 @@ html.auth-pending body>#installLanding{display:flex!important;visibility:visible
 #installLanding[hidden]{display:none!important}
 .install-inner{width:min(100%,460px);margin:auto;display:flex;flex-direction:column;align-items:center}
 .install-app-icon{width:82px;height:82px;border-radius:25px;display:grid;place-items:center;background:linear-gradient(145deg,#985cff,#6d35cf 70%,#5425ad);box-shadow:0 12px 34px rgba(139,92,246,.35),inset 0 1px 0 rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.18);margin:4px 0 17px}
-.install-app-icon svg{width:51px;height:51px;filter:drop-shadow(0 3px 4px rgba(0,0,0,.22))}
+.install-app-icon img{width:100%;height:100%;object-fit:contain;border-radius:inherit;display:block}
 .install-title{font-size:29px;line-height:1.1;letter-spacing:-.9px;font-weight:850;margin:0;text-align:center}
 .install-subtitle{font-size:14px;line-height:1.5;color:#a6a2b5;text-align:center;max-width:330px;margin:10px 0 23px}
 .install-steps{width:100%;display:grid;gap:10px}
@@ -535,7 +535,7 @@ html.auth-pending body>#installLanding{display:flex!important;visibility:visible
 .install-browser-address{height:40px;min-width:0;flex:1;border-radius:13px;background:#222330;border:1px solid rgba(255,255,255,.07);display:flex;align-items:center;gap:8px;padding:0 11px;color:#f0eef7;font-size:12px;font-weight:650}
 .install-browser-address .lock{color:#9d95b2;width:14px;height:14px}
 .install-browser-address .reload{margin-left:auto;color:#aaa5b7}
-@media(max-height:760px){#installLanding{padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(92px + env(safe-area-inset-bottom))}.install-app-icon{width:66px;height:66px;border-radius:20px;margin:0 0 12px}.install-app-icon svg{width:42px;height:42px}.install-title{font-size:26px}.install-subtitle{margin:7px 0 15px}.install-steps{gap:8px}.install-step{min-height:62px;padding:11px 12px}.install-number{width:31px;height:31px}.install-step-copy{font-size:12px}}
+@media(max-height:760px){#installLanding{padding-top:calc(16px + env(safe-area-inset-top));padding-bottom:calc(92px + env(safe-area-inset-bottom))}.install-app-icon{width:66px;height:66px;border-radius:20px;margin:0 0 12px}.install-app-icon img{width:100%;height:100%}.install-title{font-size:26px}.install-subtitle{margin:7px 0 15px}.install-steps{gap:8px}.install-step{min-height:62px;padding:11px 12px}.install-number{width:31px;height:31px}.install-step-copy{font-size:12px}}
 @media(prefers-reduced-motion:reduce){#installLanding *{scroll-behavior:auto!important}}
 
 </style>
@@ -545,11 +545,9 @@ html.auth-pending body>#installLanding{display:flex!important;visibility:visible
 
 <section id="installLanding" aria-label="Установка приложения">
  <div class="install-inner">
-  <div class="install-app-icon" aria-hidden="true">
-   <svg viewBox="0 0 64 64" fill="none"><path d="M7 24.5 31.8 12 57 24.5 32 37 7 24.5Z" fill="#fff"/><path d="M17 30v11.2c0 2.4 6.7 7.2 15 7.2s15-4.8 15-7.2V30l-15 7.5L17 30Z" fill="#fff"/><path d="M56.5 25v16" stroke="#f6cf72" stroke-width="3" stroke-linecap="round"/><circle cx="56.5" cy="44" r="3.5" fill="#f6cf72"/><path d="M8 24.5 32 36.5 56 24.5" stroke="#e9e5ff" stroke-width="1.2" stroke-linecap="round" opacity=".6"/></svg>
-  </div>
-  <h1 class="install-title">Староста бот</h1>
-  <p class="install-subtitle">Установите приложение на телефон — работает без Telegram.</p>
+  <div class="install-app-icon" aria-label="Логотип Вася Бот"><img src="data:image/png;base64,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" alt="Логотип Вася Бот"></div>
+  <h1 class="install-title">Вася Бот</h1>
+  <p class="install-subtitle">Расписание группы и всё важное — в одном приложении.</p>
   <div class="install-steps" id="installSteps"></div>
   <button class="install-browser-link" type="button" onclick="continueToBrowserLogin()">Или пользоваться в браузере, без установки <span>→</span></button>
  </div>
@@ -1028,13 +1026,13 @@ function renderInstallSteps(){
  const steps=ios?[
   'Нажмите <strong>«Поделиться»</strong> <svg viewBox="0 0 24 24"><path d="M12 15V3m-4 4 4-4 4 4"/><path d="M5 11v8a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-8"/></svg> внизу экрана Safari',
   'Пролистайте меню и выберите <strong>«На экран Домой»</strong> <svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M12 8v8M8 12h8"/></svg>',
-  'Нажмите <strong>«Добавить»</strong> — иконка «Староста бот» появится на экране телефона',
+  'Нажмите <strong>«Добавить»</strong> — иконка «Вася Бот» появится на экране телефона',
   'Откройте приложение с экрана телефона и войдите через Telegram — группа и все данные останутся на месте'
  ]:android?[
   'Нажмите на <strong>три точки ⋮</strong> в правом верхнем углу Chrome',
   'Выберите <strong>«Установить приложение»</strong> или <strong>«Добавить на главный экран»</strong>',
   'Подтвердите установку кнопкой <strong>«Установить»</strong> или <strong>«Добавить»</strong>',
-  'Откройте «Староста бот» с главного экрана и войдите через Telegram — ваши данные сохранятся'
+  'Откройте «Вася Бот» с главного экрана и войдите через Telegram — ваши данные сохранятся'
  ]:[
   'Откройте меню браузера — обычно это кнопка с тремя точками или значок «Поделиться»',
   'Выберите <strong>«Установить приложение»</strong> или <strong>«Добавить на главный экран»</strong>, если такой пункт доступен',
