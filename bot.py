@@ -672,7 +672,7 @@ async def main() -> None:
     if WEBAPP_URL or WEBAPP_DEV:
         runner = await start_server(create_app(Deps(
             token=BOT_TOKEN, group=GROUP_NAME, tz=TZ, tz_name=TIMEZONE, get_lessons=get_miniapp_lessons, bells=bells,
-            is_member=is_chat_member if WEBAPP_MEMBERS_ONLY else None, dev=WEBAPP_DEV,
+            is_member=is_chat_member if WEBAPP_MEMBERS_ONLY else None, chat_id=CHAT_ID, dev=WEBAPP_DEV,
             data_dir=DATA_DIR, auth_max_age=WEBAPP_AUTH_MAX_AGE)), WEBAPP_HOST, WEBAPP_PORT)
         if WEBAPP_URL:
             try:  # кнопка «Расписание» рядом с полем ввода во всех личных чатах с ботом
