@@ -643,9 +643,14 @@ async def api_students(request: web.Request) -> web.Response:
             finally:
                 db.close()
         users = await asyncio.to_thread(read)
-    semaphore = asyncio.Semaphore(5)\n    async def attach_status(item):\n        async with semaphore:\n            profile = await _get_emoji_status(d, int(item["telegram_id"]))
+    semaphore = asyncio.Semaphore(5)
+    async def attach_status(item):
+        async with semaphore:
+            profile = await _get_emoji_status(d, int(item["telegram_id"]))
             item["is_premium"] = bool(profile and profile.get("is_premium"))
-            item["emoji_status"] = profile.get("emoji_status") if profile else None\n    await asyncio.gather(*(attach_status(item) for item in users))\n    return web.json_response({"students": users, "total": len(users)})
+            item["emoji_status"] = profile.get("emoji_status") if profile else None
+    await asyncio.gather(*(attach_status(item) for item in users))
+    return web.json_response({"students": users, "total": len(users)})
 
 async def api_admin_update_role(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
