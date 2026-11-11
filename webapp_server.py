@@ -103,9 +103,16 @@ def _day_json(d: Deps, day: date, lessons: list[dict], error: bool, cached: bool
     times = d.bells.day_times(day)
     out = []
     for l in lessons:
+        subject = str(l.get("subject") or "").strip()
+        # Защитная проверка API: запись без названия предмета
+        # не должна попадать ни в расписание дня, ни в неделю.
+        if subject.casefold() in {"", "-", "—", "без названия", "занятие без названия",
+                                  "первая", "вторая", "третья", "четвертая", "четвёртая",
+                                  "пятая", "шестая", "седьмая", "восьмая", "девятая"}:
+            continue
         t = times.get(l.get("number"))
         out.append({
-            "number": l.get("number"), "subject": l.get("subject", ""),
+            "number": l.get("number"), "subject": subject,
             "room": l.get("room", ""), "teacher": l.get("teacher", ""),
             "start": f"{t[0]:%H:%M}" if t else None,
             "end": f"{t[1]:%H:%M}" if t else None,
