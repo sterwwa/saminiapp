@@ -753,6 +753,41 @@ async def api_journal_get(request: web.Request) -> web.Response:
     })
 
 
+async def api_journal_history(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    today = datetime.now(d.tz).date()
+    try:
+        end_day = date.fromisoformat(request.query.get("to", today.isoformat()))
+        start_day = date.fromisoformat(request.query.get("from", (today - timedelta(days=29)).isoformat()))
+    except ValueError:
+        raise web.HTTPBadRequest(text="Некорректный период")
+    if start_day > end_day or (end_day - start_day).days > 61:
+        raise web.HTTPBadRequest(text="Период должен быть не длиннее 62 дней")
+    async with d.users_lock:
+        def read():
+            db = _db_connect(d)
+            try:
+                students = [dict(row) for row in db.execute(
+                    "SELECT telegram_id, full_name FROM registered_users ORDER BY full_name COLLATE NOCASE"
+                ).fetchall()]
+                sessions = [dict(row) for row in db.execute(
+                    "SELECT lesson_date, lesson_number, subject FROM journal_sessions WHERE lesson_date BETWEEN ? AND ? ORDER BY lesson_date, CAST(lesson_number AS INTEGER)",
+                    (start_day.isoformat(), end_day.isoformat())
+                ).fetchall()]
+                absences = [dict(row) for row in db.execute(
+                    "SELECT lesson_date, lesson_number, student_id FROM journal_absences WHERE lesson_date BETWEEN ? AND ?",
+                    (start_day.isoformat(), end_day.isoformat())
+                ).fetchall()]
+                return students, sessions, absences
+            finally:
+                db.close()
+        students, sessions, absences = await asyncio.to_thread(read)
+    return web.json_response({"from": start_day.isoformat(), "to": end_day.isoformat(),
+        "students": students, "sessions": sessions, "absences": absences,
+        "can_edit": _journal_can_edit(d, uid)})
+
+
 async def api_journal_save(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     uid = int((request.get("user") or {}).get("id", 0))
@@ -797,11 +832,16 @@ async def api_journal_save(request: web.Request) -> web.Response:
                     ).fetchall()}
                     if known != set(absent_ids):
                         raise ValueError("В списке есть неизвестные студенты")
+                now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                subject = next((str(lesson.get("subject", "")) for lesson in lessons if str(lesson.get("number")) == lesson_number), "")
+                db.execute(
+                    "INSERT INTO journal_sessions (lesson_date, lesson_number, subject, marked_by, updated_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(lesson_date, lesson_number) DO UPDATE SET subject=excluded.subject, marked_by=excluded.marked_by, updated_at=excluded.updated_at",
+                    (day.isoformat(), lesson_number, subject, uid, now)
+                )
                 db.execute(
                     "DELETE FROM journal_absences WHERE lesson_date = ? AND lesson_number = ?",
                     (day.isoformat(), lesson_number)
                 )
-                now = datetime.now(timezone.utc).isoformat(timespec="seconds")
                 db.executemany(
                     "INSERT INTO journal_absences (lesson_date, lesson_number, student_id, marked_by, updated_at) VALUES (?, ?, ?, ?, ?)",
                     [(day.isoformat(), lesson_number, student_id, uid, now) for student_id in absent_ids]
@@ -846,6 +886,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/me", api_me)
     app.router.add_get("/api/students", api_students)
     app.router.add_get("/api/journal", api_journal_get)
+    app.router.add_get("/api/journal/history", api_journal_history)
     app.router.add_post("/api/journal", api_journal_save)
     app.router.add_post("/api/access", api_access)
     app.router.add_post("/api/admin/access-code", api_admin_access_code)
