@@ -52,6 +52,88 @@ class Deps:
     access_attempts: dict[int, list[float]] = field(default_factory=dict)
 
 
+def _telegram_login_user(payload: dict, token: str, max_age: int = 86400) -> dict | None:
+    """Проверяет подпись Telegram Login Widget и возвращает только подтверждённые поля пользователя."""
+    if not isinstance(payload, dict):
+        return None
+    supplied_hash = payload.get("hash")
+    auth_date = payload.get("auth_date")
+    if not isinstance(supplied_hash, str) or not re.fullmatch(r"[0-9a-f]{64}", supplied_hash):
+        return None
+    try:
+        issued = int(auth_date)
+    except (TypeError, ValueError):
+        return None
+    now = int(time.time())
+    if issued > now + 30 or now - issued > max_age:
+        return None
+    fields = {str(k): str(v) for k, v in payload.items() if k != "hash" and v is not None}
+    check_string = "\\n".join(f"{k}={fields[k]}" for k in sorted(fields))
+    secret = hashlib.sha256(token.encode("utf-8")).digest()
+    expected = hmac.new(secret, check_string.encode("utf-8"), hashlib.sha256).hexdigest()
+    if not hmac.compare_digest(expected, supplied_hash):
+        return None
+    try:
+        uid = int(fields["id"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    if uid <= 0:
+        return None
+    user = {"id": uid}
+    for key in ("first_name", "last_name", "username", "photo_url", "language_code"):
+        value = fields.get(key)
+        if value:
+            user[key] = value[:2048] if key == "photo_url" else value[:256]
+    return user
+
+
+def _make_browser_session(user: dict, token: str) -> str:
+    payload = {"user": user, "exp": int(time.time()) + 7 * 24 * 60 * 60}
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    encoded = __import__("base64").urlsafe_b64encode(raw).rstrip(b"=").decode("ascii")
+    key = hmac.new(b"sa225-browser-session", token.encode("utf-8"), hashlib.sha256).digest()
+    signature = hmac.new(key, encoded.encode("ascii"), hashlib.sha256).hexdigest()
+    return encoded + "." + signature
+
+
+def _read_browser_session(value: str, token: str) -> dict | None:
+    try:
+        encoded, signature = value.split(".", 1)
+        key = hmac.new(b"sa225-browser-session", token.encode("utf-8"), hashlib.sha256).digest()
+        expected = hmac.new(key, encoded.encode("ascii"), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(expected, signature):
+            return None
+        padded = encoded + "=" * (-len(encoded) % 4)
+        raw = __import__("base64").urlsafe_b64decode(padded.encode("ascii"))
+        payload = json.loads(raw.decode("utf-8"))
+        user = payload.get("user")
+        if int(payload.get("exp", 0)) < int(time.time()) or not isinstance(user, dict):
+            return None
+        if int(user.get("id", 0)) <= 0:
+            return None
+        return user
+    except (ValueError, TypeError, KeyError, UnicodeError, json.JSONDecodeError):
+        return None
+
+
+async def auth_telegram(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    try:
+        payload = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        return web.json_response({"message": "Некорректный ответ Telegram"}, status=400)
+    user = _telegram_login_user(payload, d.token)
+    if user is None:
+        return web.json_response({"message": "Не удалось подтвердить вход через Telegram. Попробуйте ещё раз."}, status=401)
+    response = web.json_response({"authenticated": True})
+    response.set_cookie(
+        "sa225_session", _make_browser_session(user, d.token),
+        max_age=7 * 24 * 60 * 60, httponly=True, secure=True,
+        samesite="Lax", path="/",
+    )
+    return response
+
+
 @web.middleware
 async def guard(request: web.Request, handler):
     d: Deps = request.app["deps"]
@@ -59,7 +141,9 @@ async def guard(request: web.Request, handler):
     if request.path.startswith("/api/") and not d.dev:
         user = validate_init_data(request.headers.get("X-Init-Data", ""), d.token, d.auth_max_age)
         if user is None:
-            return web.json_response({"error": "unauthorized", "message": "Откройте приложение через Telegram"}, status=401)
+            user = _read_browser_session(request.cookies.get("sa225_session", ""), d.token)
+        if user is None:
+            return web.json_response({"error": "unauthorized", "message": "Войдите через Telegram"}, status=401)
         uid = int(user["id"])
         # Небольшой per-user лимит защищает API от случайных циклов и спама.
         now_mono = time.monotonic()
@@ -1239,6 +1323,7 @@ def create_app(deps: Deps) -> web.Application:
     app["deps"] = deps
     app.router.add_get("/", index)
     app.router.add_get("/healthz", health)
+    app.router.add_post("/auth/telegram", auth_telegram)
     app.router.add_get("/api/day", api_day)
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
