@@ -40,6 +40,9 @@ class Deps:
     tz_name: str
     get_lessons: Callable[..., Awaitable[list[dict]]]
     bells: Bells
+    chat_id: int | str | None = None
+    emoji_cache: dict[int, tuple[float, dict | None]] = field(default_factory=dict)
+    emoji_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     is_member: Callable[[int], Awaitable[bool]] | None = None
     dev: bool = False
     data_dir: Path = Path("data")
@@ -640,7 +643,7 @@ async def api_students(request: web.Request) -> web.Response:
             finally:
                 db.close()
         users = await asyncio.to_thread(read)
-    return web.json_response({"students": users, "total": len(users)})
+    semaphore = asyncio.Semaphore(5)\n    async def attach_status(item):\n        async with semaphore:\n            item["emoji_status"] = await _get_emoji_status(d, int(item["telegram_id"]))\n    await asyncio.gather(*(attach_status(item) for item in users))\n    return web.json_response({"students": users, "total": len(users)})
 
 async def api_admin_update_role(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
@@ -797,12 +800,56 @@ async def api_admin_restore_user(request: web.Request) -> web.Response:
     return web.json_response({"saved": True, "restored": restored, "must_reenter_code": True})
 
 
+
+async def _telegram_api_json(d: Deps, method: str, payload: dict) -> dict | None:
+    try:
+        async with ClientSession(timeout=ClientTimeout(total=8)) as session:
+            async with session.post(f"https://api.telegram.org/bot{d.token}/{method}", json=payload) as response:
+                data = await response.json(content_type=None)
+        if not isinstance(data, dict) or not data.get("ok"):
+            return None
+        result = data.get("result")
+        return result if isinstance(result, dict) else None
+    except Exception:
+        log.debug("Telegram %s недоступен для emoji status", method, exc_info=True)
+        return None
+
+
+async def _get_emoji_status(d: Deps, user_id: int) -> dict | None:
+    """Получает подтверждённый статус участника из Bot API; кэширует результат на 5 минут."""
+    if not d.chat_id:
+        return None
+    now_mono = time.monotonic()
+    async with d.emoji_lock:
+        cached = d.emoji_cache.get(user_id)
+        if cached and now_mono - cached[0] < 300:
+            return cached[1]
+    member = await _telegram_api_json(d, "getChatMember", {"chat_id": d.chat_id, "user_id": user_id})
+    telegram_user = member.get("user") if member else None
+    if not isinstance(telegram_user, dict):
+        result = None
+    else:
+        custom_id = str(telegram_user.get("emoji_status_custom_emoji_id") or "")
+        result = None
+        if custom_id:
+            stickers = await _telegram_api_json(d, "getCustomEmojiStickers", {"custom_emoji_ids": [custom_id]})
+            sticker = stickers[0] if isinstance(stickers, list) and stickers and isinstance(stickers[0], dict) else {}
+            fallback = str(sticker.get("emoji") or "")
+            if fallback:
+                result = {"custom_emoji_id": custom_id, "emoji": fallback,
+                          "is_premium": bool(telegram_user.get("is_premium"))}
+    async with d.emoji_lock:
+        d.emoji_cache[user_id] = (time.monotonic(), result)
+    return result
+
+
 async def api_me(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     user = request.get("user") or {}
     uid = int(user.get("id", 1))
     registered = await _get_registered_user(d, uid)
     access = await _access_snapshot(d, uid)
+    emoji_status = await _get_emoji_status(d, uid)
     async with d.prefs_lock:
         await _load_prefs(d)
         prefs = {**DEFAULT_PREFS, **d.prefs.get(uid, {})}
@@ -811,7 +858,9 @@ async def api_me(request: web.Request) -> web.Response:
                  "last_name": str(user.get("last_name", ""))[:64],
                  "username": str(user.get("username", ""))[:64],
                  "language_code": str(user.get("language_code", "ru"))[:12],
-                 "photo_url": str(user.get("photo_url", ""))[:2048] if str(user.get("photo_url", "")).startswith("https://") else ""},
+                 "photo_url": str(user.get("photo_url", ""))[:2048] if str(user.get("photo_url", "")).startswith("https://") else "",
+                 "is_premium": bool(emoji_status and emoji_status.get("is_premium"))},
+        "emoji_status": emoji_status,
         "group": d.group, "timezone": d.tz_name, "preferences": prefs, "is_admin": require_admin(request, d),
         "registration": {"registered": registered is not None, "full_name": registered["full_name"] if registered else ""},
         "role": "support" if uid in d.admin_ids else (registered["role"] if registered else "student"),
