@@ -32,6 +32,7 @@ from formatting import (NUM_EMOJI, date_ru, escape, format_change, format_day, f
 from schedule import ScheduleClient, ScheduleError
 from state import State
 from webapp_server import Deps, create_app, start_server
+from push_service import pending_subscriptions, send_push
 
 load_dotenv()
 log = logging.getLogger("bot")
@@ -473,6 +474,52 @@ async def pin_new(message_id: int) -> None:
             log.info("Не удалось открепить старое сообщение: %s", e)
 
 
+
+async def webpush_reminder_tick() -> None:
+    """Отправляет push на подписанные устройства за 15 минут до начала пары."""
+    public_key = os.getenv("WEBPUSH_VAPID_PUBLIC_KEY", "").strip()
+    private_key = os.getenv("WEBPUSH_VAPID_PRIVATE_KEY", "").strip()
+    subject = os.getenv("WEBPUSH_VAPID_SUBJECT", "https://sa225-miniapp-production.up.railway.app").strip()
+    if not public_key or not private_key or not bells.configured:
+        return
+    n = now()
+    today = n.date()
+    lessons = state.get_snapshot(today)
+    if not lessons:
+        return
+    try:
+        tl = timeline(bells, today, lessons, TZ)
+    except Exception:
+        log.exception("Не удалось подготовить расписание для Web Push")
+        return
+    reminder_minutes = max(1, min(60, env_int("WEBPUSH_REMIND_MINUTES", 15)))
+    for lesson, start in tl:
+        seconds_left = (start - n).total_seconds()
+        if not 0 < seconds_left <= reminder_minutes * 60:
+            continue
+        number = lesson.get("number") or lesson.get("lesson_number") or start.strftime("%H%M")
+        event_key = f"{today.isoformat()}:{number}"
+        try:
+            targets = await asyncio.to_thread(pending_subscriptions, DATA_DIR, event_key)
+        except Exception:
+            log.exception("Не удалось получить подписки Web Push")
+            return
+        subject_name = str(lesson.get("subject") or "Следующая пара")[:120]
+        body = f"Начало в {start:%H:%M}"
+        room = str(lesson.get("room") or "").strip()
+        if room:
+            body += f" · каб. {room}"
+        body += f" · через {max(1, round(seconds_left / 60))} мин"
+        payload = {"title": f"Скоро пара: {subject_name}", "body": body,
+                   "url": "/?start=next", "tag": f"sa225-lesson-{event_key}"}
+        for target in targets:
+            try:
+                await asyncio.to_thread(send_push, DATA_DIR, target, event_key, payload, private_key, subject)
+            except Exception:
+                log.exception("Ошибка отправки Web Push пользователю %s", target.get("telegram_id"))
+            await asyncio.sleep(0.02)
+
+
 async def reminder_tick() -> None:
     """Раз в минуту: анонс пары за REMIND_MINUTES минут (по сохранённому расписанию, сайт не дёргаем)."""
     if REMIND_MODE == "off" or not bells.configured:
@@ -673,6 +720,8 @@ async def main() -> None:
                       id="daily", misfire_grace_time=3600, coalesce=True)
     scheduler.add_job(check_changes, IntervalTrigger(minutes=CHECK_MINUTES),
                       id="changes", next_run_time=now() + timedelta(minutes=1),
+                      coalesce=True, max_instances=1)
+    scheduler.add_job(webpush_reminder_tick, IntervalTrigger(minutes=1), id="webpush_reminders",
                       coalesce=True, max_instances=1)
     scheduler.add_job(reminder_tick, IntervalTrigger(minutes=1), id="reminders",
                       coalesce=True, max_instances=1)
