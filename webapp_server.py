@@ -401,8 +401,8 @@ async def api_students(request: web.Request) -> web.Response:
                         item["role"] = "moderator"
                     item["is_me"] = uid == viewer
                     result.append(item)
-                # Староста всегда первым; Support (владелец) сразу после него.
-                priority = {"moderator": 0, "starosta": 1, "student": 2}
+                # Support, староста, заместитель, модератор, затем студенты.
+                priority = {"moderator": 0, "starosta": 1, "deputy": 2, "student": 3}
                 result.sort(key=lambda item: (priority.get(item["role"], 2), item["full_name"].casefold()))
                 return result
             finally:
@@ -420,8 +420,8 @@ async def api_admin_update_role(request: web.Request) -> web.Response:
     except (ValueError, json.JSONDecodeError):
         raise web.HTTPBadRequest(text="Некорректный запрос")
     role = body.get("role") if isinstance(body, dict) and set(body) == {"role"} else None
-    if role not in {"student", "starosta"}:
-        raise web.HTTPBadRequest(text="Можно назначить только студента или старосту")
+    if role not in {"student", "deputy", "starosta", "moderator"}:
+        raise web.HTTPBadRequest(text="Некорректная роль")
     if uid in d.admin_ids:
         raise web.HTTPBadRequest(text="Роль модератора закреплена за владельцем приложения")
     async with d.users_lock:
@@ -568,6 +568,7 @@ async def api_me(request: web.Request) -> web.Response:
                  "language_code": str(user.get("language_code", "ru"))[:12]},
         "group": d.group, "timezone": d.tz_name, "preferences": prefs, "is_admin": require_admin(request, d),
         "registration": {"registered": registered is not None, "full_name": registered["full_name"] if registered else ""},
+        "role": "support" if uid in d.admin_ids else (registered["role"] if registered else "student"),
         "bio": registered["bio"] if registered and "bio" in registered.keys() else "",
         "access": access,
         "notifications_note": "Настройки сохраняются в профиле. Для фоновых push-уведомлений нужна отдельная серверная рассылка.",
