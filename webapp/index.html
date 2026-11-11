@@ -170,11 +170,17 @@ async function renderJournal(){
   const dateWrap=el('label','journal-filter','Дата занятия'),dateSelect=el('select','journal-select');dateSelect.append(new Option('Сначала выбери предмет',''));dateWrap.append(dateSelect);
   controls.append(subjectWrap,dateWrap);root.replaceChildren(controls);
   let data=null;
+  const normalizeJournalSubject=value=>{
+   const raw=String(value||'').trim(),key=raw.toLocaleLowerCase('ru-RU').replace(/ё/g,'е');
+   if(/\bвпр\b/i.test(raw)||key.includes('впр'))return '';
+   if(key.includes('иностранный язык')||key.includes('иностарнный язык'))return 'Иностранный язык';
+   return raw;
+  };
   const load=async()=>{
    data=await api('/api/journal/history');
    if(seq!==journalRenderSeq)return;
-   const previousSubject=subject.value,previousDate=dateSelect.value;
-   const subjects=[...new Set(data.sessions.map(x=>String(x.subject||'').trim()).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
+   const previousSubject=normalizeJournalSubject(subject.value),previousDate=dateSelect.value;
+   const subjects=[...new Set(data.sessions.map(x=>normalizeJournalSubject(x.subject)).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));
    subject.replaceChildren(new Option('Выбери предмет',''));
    subjects.forEach(s=>subject.append(new Option(s,s)));
    subject.value=subjects.includes(previousSubject)?previousSubject:(subjects[0]||'');
@@ -184,7 +190,7 @@ async function renderJournal(){
    const old=root.querySelector('.journal-history-content');if(old)old.remove();
    dateSelect.replaceChildren(new Option(subject.value?'Выбери дату':'Сначала выбери предмет',''));
    if(!subject.value)return;
-   const matching=data.sessions.filter(x=>String(x.subject||'').trim()===subject.value).sort((a,b)=>a.lesson_date.localeCompare(b.lesson_date)||Number(a.lesson_number)-Number(b.lesson_number));
+   const matching=data.sessions.filter(x=>normalizeJournalSubject(x.subject)===subject.value).sort((a,b)=>a.lesson_date.localeCompare(b.lesson_date)||Number(a.lesson_number)-Number(b.lesson_number));
    const counts=new Map();matching.forEach(x=>counts.set(x.lesson_date,(counts.get(x.lesson_date)||0)+1));
    matching.forEach(x=>{const count=matching.filter(y=>y.lesson_date===x.lesson_date).findIndex(y=>y.lesson_number===x.lesson_number)+1;const label=x.lesson_date.split('-').reverse().join('.')+(counts.get(x.lesson_date)>1?' · занятие '+count:'');dateSelect.append(new Option(label,x.lesson_date+'|'+x.lesson_number))});
    const chosen=matching.some(x=>x.lesson_date+'|'+x.lesson_number===preferredDate)?preferredDate:(matching.length?matching[matching.length-1].lesson_date+'|'+matching[matching.length-1].lesson_number:'');
