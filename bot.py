@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
+import sqlite3
 import logging
 import os
 import sys
@@ -182,6 +185,9 @@ async def cleanup_private_outgoing(make_request, session_bot, method):
     if private_chat_id <= 0:
         return result
 
+    # Scheduled Mini App notifications are intentionally kept in the private chat.
+    if isinstance(method, SendMessage) and str(method.text or "").startswith("📬 "):
+        return result
     messages = result if isinstance(result, list) else [result]
     for sent in messages:
         if not isinstance(sent, Message):
@@ -485,6 +491,96 @@ async def reminder_tick() -> None:
         log.info("Напоминание о %s-й паре", lesson.get("number"))
 
 
+def _notification_db() -> sqlite3.Connection:
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(DATA_DIR / "miniapp_users.sqlite3", timeout=10)
+    db.execute("""CREATE TABLE IF NOT EXISTS notification_deliveries (
+        kind TEXT NOT NULL,
+        event_key TEXT NOT NULL,
+        telegram_id INTEGER NOT NULL,
+        sent_at TEXT NOT NULL,
+        PRIMARY KEY (kind, event_key, telegram_id)
+    )""")
+    db.commit()
+    return db
+
+
+def _notification_targets(pref_key: str, event_key: str) -> list[int]:
+    prefs_path = DATA_DIR / "miniapp_preferences.json"
+    try:
+        prefs = json.loads(prefs_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        prefs = {}
+    try:
+        db = _notification_db()
+        try:
+            rows = db.execute("""SELECT u.telegram_id FROM registered_users u
+                LEFT JOIN access_bans b ON b.telegram_id=u.telegram_id
+                WHERE b.telegram_id IS NULL""").fetchall()
+        except sqlite3.OperationalError:
+            rows = db.execute("SELECT telegram_id FROM registered_users").fetchall()
+        targets = []
+        for (uid,) in rows:
+            user_prefs = prefs.get(str(uid), {}) if isinstance(prefs, dict) else {}
+            if isinstance(user_prefs, dict) and user_prefs.get(pref_key, True) is False:
+                continue
+            sent = db.execute(
+                "SELECT 1 FROM notification_deliveries WHERE kind=? AND event_key=? AND telegram_id=?",
+                (pref_key, event_key, uid),
+            ).fetchone()
+            if not sent:
+                targets.append(int(uid))
+        return targets
+    finally:
+        db.close()
+
+
+def _mark_notification_sent(pref_key: str, event_key: str, uid: int) -> None:
+    db = _notification_db()
+    try:
+        db.execute(
+            "INSERT OR IGNORE INTO notification_deliveries(kind,event_key,telegram_id,sent_at) VALUES(?,?,?,?)",
+            (pref_key, event_key, uid, now().isoformat(timespec="seconds")),
+        )
+        # Keep the delivery ledger bounded.
+        db.execute("DELETE FROM notification_deliveries WHERE sent_at < ?", ((now() - timedelta(days=45)).isoformat(timespec="seconds"),))
+        db.commit()
+    finally:
+        db.close()
+
+
+async def notify_miniapp_users(pref_key: str, event_key: str, message: str) -> None:
+    """Deliver a personal Telegram DM to registered Mini App users who enabled this notification."""
+    try:
+        targets = await asyncio.to_thread(_notification_targets, pref_key, event_key)
+    except Exception:
+        log.exception("Не удалось получить список получателей уведомлений")
+        return
+    delivered = 0
+    for uid in targets:
+        try:
+            # The marker makes the private-chat cleanup middleware preserve scheduled notices.
+            await bot.send_message(uid, "📬 " + message)
+            await asyncio.to_thread(_mark_notification_sent, pref_key, event_key, uid)
+            delivered += 1
+        except TelegramAPIError as e:
+            log.info("Не удалось отправить уведомление пользователю %s: %s", uid, e)
+        await asyncio.sleep(0.04)
+    log.info("Личные уведомления %s: отправлено %d из %d", pref_key, delivered, len(targets))
+
+
+async def notify_tomorrow(day: date, lessons: list[dict]) -> None:
+    message = render_day(day, lessons)
+    await notify_miniapp_users("daily_summary", day.isoformat(), message)
+
+
+async def notify_schedule_change(day: date, old: list[dict], new: list[dict]) -> None:
+    change = format_change(GROUP_NAME, day, old, new, times=bells.day_ranges(day))
+    raw = json.dumps({"old": old, "new": new}, ensure_ascii=False, sort_keys=True, default=str)
+    event_key = day.isoformat() + ":" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
+    await notify_miniapp_users("schedule_changes", event_key, change)
+
+
 async def daily_send() -> None:
     """Каждый день в 20:00: расписание на завтра -> в беседу."""
     async with _lock:
@@ -505,6 +601,7 @@ async def daily_send() -> None:
             state.mark_sent(day, now())  # не спамим ошибкой; проверка изменений подхватит расписание позже
             return
         msg = await bot.send_message(CHAT_ID, render_day(day, lessons), reply_markup=keyboard())
+        await notify_tomorrow(day, lessons)
         state.set_snapshot(day, lessons)
         state.mark_sent(day, now())
         await pin_new(msg.message_id)
@@ -528,6 +625,7 @@ async def check_changes() -> None:
                 state.set_snapshot(day, new)  # первое наблюдение — просто запоминаем
             elif old != new:
                 await bot.send_message(CHAT_ID, format_change(GROUP_NAME, day, old, new, times=bells.day_ranges(day)))
+                await notify_schedule_change(day, old, new)
                 state.set_snapshot(day, new)  # после доставки: повторов не будет
                 log.info("Уведомление об изменении на %s", day)
             await asyncio.sleep(1)
