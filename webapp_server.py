@@ -229,6 +229,8 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
     columns = {row["name"] for row in db.execute("PRAGMA table_info(registered_users)").fetchall()}
     if "bio" not in columns:
         db.execute("ALTER TABLE registered_users ADD COLUMN bio TEXT NOT NULL DEFAULT ''")
+    if "role" not in columns:
+        db.execute("ALTER TABLE registered_users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
     db.execute("CREATE TABLE IF NOT EXISTS access_settings (id INTEGER PRIMARY KEY CHECK (id = 1), salt TEXT NOT NULL, code_hash TEXT NOT NULL, version INTEGER NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS access_grants (telegram_id INTEGER PRIMARY KEY, version INTEGER NOT NULL)")
     db.execute("CREATE TABLE IF NOT EXISTS access_bans (telegram_id INTEGER PRIMARY KEY, banned_at TEXT NOT NULL)")
@@ -380,6 +382,58 @@ async def api_admin_users(request: web.Request) -> web.Response:
         users = await asyncio.to_thread(read)
     return web.json_response({"users": users, "total": len(users)})
 
+
+async def api_students(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    viewer = int((request.get("user") or {}).get("id", 0))
+    if not await _has_access(d, viewer):
+        return web.json_response({"error": "forbidden", "message": "Нет доступа"}, status=403)
+    async with d.users_lock:
+        def read():
+            db = _db_connect(d)
+            try:
+                rows = db.execute("SELECT telegram_id, full_name, username, role FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
+                result = []
+                for row in rows:
+                    item = dict(row)
+                    uid = int(item["telegram_id"])
+                    if uid in d.admin_ids:
+                        item["role"] = "moderator"
+                    item["is_me"] = uid == viewer
+                    result.append(item)
+                return result
+            finally:
+                db.close()
+        users = await asyncio.to_thread(read)
+    return web.json_response({"students": users, "total": len(users)})
+
+async def api_admin_update_role(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    if not require_admin(request, d):
+        return web.json_response({"error": "forbidden", "message": "Только администратор может менять роли"}, status=403)
+    try:
+        uid = int(request.match_info["user_id"])
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        raise web.HTTPBadRequest(text="Некорректный запрос")
+    role = body.get("role") if isinstance(body, dict) and set(body) == {"role"} else None
+    if role not in {"student", "starosta"}:
+        raise web.HTTPBadRequest(text="Можно назначить только студента или старосту")
+    if uid in d.admin_ids:
+        raise web.HTTPBadRequest(text="Роль модератора закреплена за владельцем приложения")
+    async with d.users_lock:
+        def update():
+            db = _db_connect(d)
+            try:
+                cur = db.execute("UPDATE registered_users SET role = ?, updated_at = ? WHERE telegram_id = ?", (role, datetime.now(timezone.utc).isoformat(timespec="seconds"), uid))
+                db.commit()
+                return cur.rowcount > 0
+            finally:
+                db.close()
+        exists = await asyncio.to_thread(update)
+    if not exists:
+        raise web.HTTPNotFound(text="Студент не найден")
+    return web.json_response({"saved": True, "telegram_id": uid, "role": role})
 
 async def api_admin_update_user(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
@@ -578,11 +632,13 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/day", api_day)
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
+    app.router.add_get("/api/students", api_students)
     app.router.add_post("/api/access", api_access)
     app.router.add_post("/api/admin/access-code", api_admin_access_code)
     app.router.add_get("/api/admin/overview", api_admin_overview)
     app.router.add_get("/api/admin/users", api_admin_users)
     app.router.add_put("/api/admin/users/{user_id:\\d+}", api_admin_update_user)
+    app.router.add_put("/api/admin/users/{user_id:\\d+}/role", api_admin_update_role)
     app.router.add_post("/api/admin/users/{user_id:\\d+}/kick", api_admin_kick_user)
     app.router.add_post("/api/admin/users/{user_id:\\d+}/restore", api_admin_restore_user)
     app.router.add_post("/api/register", api_register)
