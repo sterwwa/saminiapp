@@ -242,6 +242,20 @@ body{padding-bottom:calc(112px + env(safe-area-inset-bottom))}
 @media(max-width:370px){.bottom{left:8px;right:8px;border-radius:22px}.tab{font-size:9px}}
 @media(prefers-reduced-motion:reduce){.tab{transition:none}}
 
+
+/* More transparent floating navigation */
+.bottom{
+ background:rgba(13,14,17,.46)!important;
+ border-color:rgba(255,255,255,.10)!important;
+ box-shadow:0 10px 34px rgba(0,0,0,.24),inset 0 1px 0 rgba(255,255,255,.10)!important;
+ backdrop-filter:blur(30px) saturate(155%)!important;
+ -webkit-backdrop-filter:blur(30px) saturate(155%)!important;
+}
+:root[data-theme="light"] .bottom{
+ background:rgba(248,248,251,.58)!important;
+ border-color:rgba(30,35,48,.09)!important;
+ box-shadow:0 10px 30px rgba(20,25,40,.10),inset 0 1px 0 rgba(255,255,255,.58)!important;
+}
 </style>
 </head>
 <body>
