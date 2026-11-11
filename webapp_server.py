@@ -397,7 +397,7 @@ async def api_admin_access_code(request: web.Request) -> web.Response:
             try:
                 row = db.execute("SELECT version FROM access_settings WHERE id = 1").fetchone()
                 version = (row["version"] if row else 0) + 1
-                db.execute("INSERT INTO access_settings (id, salt, code_hash, version, code_plain) VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET salt=excluded.salt, code_hash=excluded.code_hash, version=excluded.version, code_plain=excluded.code_plain", (salt.hex(), digest, version, code)
+                db.execute("INSERT INTO access_settings (id, salt, code_hash, version, code_plain) VALUES (1, ?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET salt=excluded.salt, code_hash=excluded.code_hash, version=excluded.version, code_plain=excluded.code_plain", (salt.hex(), digest, version, code))
                 if preserve:
                     db.execute("UPDATE access_grants SET version = ?", (version,))
                 else:
