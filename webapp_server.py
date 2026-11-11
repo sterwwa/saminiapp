@@ -407,10 +407,6 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
     if "roles_json" not in columns:
         db.execute("ALTER TABLE registered_users ADD COLUMN roles_json TEXT NOT NULL DEFAULT '[\"student\"]'")
         db.execute("UPDATE registered_users SET roles_json = json_array(COALESCE(role, 'student'))")
-    if "profile_emoji" not in columns:
-        db.execute("ALTER TABLE registered_users ADD COLUMN profile_emoji TEXT NOT NULL DEFAULT ''")
-    if "is_premium" not in columns:
-        db.execute("ALTER TABLE registered_users ADD COLUMN is_premium INTEGER NOT NULL DEFAULT 0")
     db.execute("CREATE TABLE IF NOT EXISTS access_settings (id INTEGER PRIMARY KEY CHECK (id = 1), salt TEXT NOT NULL, code_hash TEXT NOT NULL, version INTEGER NOT NULL)")
     access_columns = {row["name"] for row in db.execute("PRAGMA table_info(access_settings)").fetchall()}
     if "code_plain" not in access_columns:
@@ -621,7 +617,7 @@ async def api_students(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                rows = db.execute("SELECT telegram_id, full_name, username, role, roles_json, bio, birth_date, avatar_data, profile_emoji, is_premium FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
+                rows = db.execute("SELECT telegram_id, full_name, username, role, roles_json, bio, birth_date, avatar_data FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
                 result = []
                 for row in rows:
                     item = dict(row)
@@ -638,7 +634,6 @@ async def api_students(request: web.Request) -> web.Response:
                     if uid in d.admin_ids:
                         continue
                     item["roles"] = roles
-                    item["is_premium"] = bool(item.get("is_premium"))
                     item.pop("roles_json", None)
                     item["is_me"] = uid == viewer
                     result.append(item)
@@ -806,62 +801,10 @@ async def api_admin_restore_user(request: web.Request) -> web.Response:
 
 
 
-async def _telegram_api_json(d: Deps, method: str, payload: dict) -> dict | list | None:
-    try:
-        async with ClientSession(timeout=ClientTimeout(total=8)) as session:
-            async with session.post(f"https://api.telegram.org/bot{d.token}/{method}", json=payload) as response:
-                data = await response.json(content_type=None)
-        if not isinstance(data, dict) or not data.get("ok"):
-            return None
-        result = data.get("result")
-        return result if isinstance(result, (dict, list)) else None
-    except Exception:
-        log.debug("Telegram %s недоступен для emoji status", method, exc_info=True)
-        return None
-
-
-async def _get_emoji_status(d: Deps, user_id: int) -> dict | None:
-    """Получает подтверждённый статус участника из Bot API; кэширует результат на 5 минут."""
-    if not d.chat_id:
-        return None
-    now_mono = time.monotonic()
-    async with d.emoji_lock:
-        cached = d.emoji_cache.get(user_id)
-        if cached and now_mono - cached[0] < 300:
-            return cached[1]
-    member = await _telegram_api_json(d, "getChatMember", {"chat_id": d.chat_id, "user_id": user_id})
-    telegram_user = member.get("user") if member else None
-    if not isinstance(telegram_user, dict):
-        result = None
-    else:
-        custom_id = str(telegram_user.get("emoji_status_custom_emoji_id") or "")
-        result = {"is_premium": bool(telegram_user.get("is_premium")), "emoji_status": None}
-        if custom_id:
-            stickers = await _telegram_api_json(d, "getCustomEmojiStickers", {"custom_emoji_ids": [custom_id]})
-            sticker = stickers[0] if isinstance(stickers, list) and stickers and isinstance(stickers[0], dict) else {}
-            fallback = str(sticker.get("emoji") or "")
-            if fallback:
-                result["emoji_status"] = {"custom_emoji_id": custom_id, "emoji": fallback}
-    async with d.emoji_lock:
-        d.emoji_cache[user_id] = (time.monotonic(), result)
-    return result
-
-
 async def api_me(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     user = request.get("user") or {}
     uid = int(user.get("id", 1))
-    is_premium = user.get("is_premium") is True
-    async with d.users_lock:
-        def save_premium():
-            db = _db_connect(d)
-            try:
-                db.execute("UPDATE registered_users SET is_premium = ?, updated_at = ? WHERE telegram_id = ?",
-                           (1 if is_premium else 0, datetime.now(timezone.utc).isoformat(timespec="seconds"), uid))
-                db.commit()
-            finally:
-                db.close()
-        await asyncio.to_thread(save_premium)
     registered = await _get_registered_user(d, uid)
     access = await _access_snapshot(d, uid)
     async with d.prefs_lock:
@@ -873,9 +816,7 @@ async def api_me(request: web.Request) -> web.Response:
                  "username": str(user.get("username", ""))[:64],
                  "language_code": str(user.get("language_code", "ru"))[:12],
                  "photo_url": str(user.get("photo_url", ""))[:2048] if str(user.get("photo_url", "")).startswith("https://") else "",
-                 "is_premium": is_premium},
-        "profile_emoji": registered["profile_emoji"] if registered and "profile_emoji" in registered.keys() else "",
-        "group": d.group, "timezone": d.tz_name, "preferences": prefs, "is_admin": require_admin(request, d),
+                 },        "group": d.group, "timezone": d.tz_name, "preferences": prefs, "is_admin": require_admin(request, d),
         "registration": {"registered": registered is not None, "full_name": registered["full_name"] if registered else ""},
         "role": "support" if uid in d.admin_ids else (registered["role"] if registered else "student"),
         "roles": ["support"] if uid in d.admin_ids else (json.loads(registered["roles_json"]) if registered and "roles_json" in registered.keys() else [registered["role"] if registered else "student"]),
@@ -909,15 +850,14 @@ async def api_register(request: web.Request) -> web.Response:
             db = _db_connect(d)
             try:
                 db.execute("""INSERT INTO registered_users
-                    (telegram_id, full_name, first_name, last_name, username, language_code, is_premium, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    (telegram_id, full_name, first_name, last_name, username, language_code, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(telegram_id) DO UPDATE SET full_name=excluded.full_name,
                     first_name=excluded.first_name, last_name=excluded.last_name,
                     username=excluded.username, language_code=excluded.language_code,
-                    is_premium=excluded.is_premium, updated_at=excluded.updated_at""",
+                    updated_at=excluded.updated_at""",
                     (uid, full_name, str(user.get("first_name", ""))[:64], str(user.get("last_name", ""))[:64],
-                     str(user.get("username", ""))[:64], str(user.get("language_code", ""))[:12],
-                     1 if user.get("is_premium") is True else 0, now, now))
+                     str(user.get("username", ""))[:64], str(user.get("language_code", ""))[:12], now, now))
                 db.commit()
                 return dict(db.execute("SELECT * FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone())
             finally:
@@ -933,7 +873,7 @@ async def api_profile(request: web.Request) -> web.Response:
         body = await request.json()
     except (json.JSONDecodeError, ValueError):
         raise web.HTTPBadRequest(text="Ожидается JSON")
-    allowed = {"bio", "full_name", "birth_date", "avatar_data", "profile_emoji"}
+    allowed = {"bio", "full_name", "birth_date", "avatar_data"}
     if not isinstance(body, dict) or not body or set(body) - allowed:
         raise web.HTTPBadRequest(text="Некорректные данные профиля")
     updates: list[str] = []
@@ -975,18 +915,6 @@ async def api_profile(request: web.Request) -> web.Response:
             raise web.HTTPBadRequest(text="Фото должно быть JPG и не больше 350 КБ")
         updates.append("avatar_data = ?")
         values.append(avatar_data)
-    if "profile_emoji" in body:
-        profile_emoji = body["profile_emoji"]
-        if not isinstance(profile_emoji, str):
-            raise web.HTTPBadRequest(text="Эмодзи должно быть текстом")
-        profile_emoji = profile_emoji.strip()
-        if len(profile_emoji) > 16 or (profile_emoji and (
-            not re.search(r"[\U0001F000-\U0001FAFF\u2600-\u27BF]", profile_emoji)
-            or re.search(r"[A-Za-zА-Яа-яЁё0-9]", profile_emoji)
-        )):
-            raise web.HTTPBadRequest(text="Укажите один эмодзи")
-        updates.append("profile_emoji = ?")
-        values.append(profile_emoji)
     if not updates:
         raise web.HTTPBadRequest(text="Нет данных для сохранения")
     updates.append("updated_at = ?")
@@ -999,7 +927,7 @@ async def api_profile(request: web.Request) -> web.Response:
                 if not cur.rowcount:
                     return None
                 db.commit()
-                row = db.execute("SELECT full_name, bio, birth_date, avatar_data, profile_emoji FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone()
+                row = db.execute("SELECT full_name, bio, birth_date, avatar_data FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone()
                 return dict(row)
             finally:
                 db.close()
