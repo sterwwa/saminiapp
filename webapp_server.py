@@ -642,7 +642,7 @@ async def api_me(request: web.Request) -> web.Response:
         "birth_date": registered["birth_date"] if registered and "birth_date" in registered.keys() else "",
         "avatar_data": registered["avatar_data"] if registered and "avatar_data" in registered.keys() else "",
         "access": access,
-        "notifications_note": "Настройки сохраняются в профиле. Для фоновых push-уведомлений нужна отдельная серверная рассылка.",
+        "notifications_note": "Уведомления приходят в личные сообщения Telegram. Включите чат с ботом, чтобы получать расписание на завтра в 20:00 и сообщения об изменениях.",
     })
 
 
