@@ -116,6 +116,28 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}button
 .tg-native-note{margin:12px 7px 5px;color:var(--muted);font-size:11px;line-height:1.5;text-align:center}
 @media(max-width:360px){.tg-native-avatar{width:96px;height:96px}.tg-native-name{font-size:20px}.tg-native-actions{gap:6px}.tg-native-action{font-size:11px}}
 
+
+.tg-native-hero{position:relative}
+.tg-profile-edit-trigger{position:absolute;right:5px;top:8px;width:38px;height:38px;border:1px solid var(--line);border-radius:50%;background:var(--panel);color:var(--text);display:grid;place-items:center;font-size:19px;box-shadow:0 2px 8px #0002}
+.tg-profile-edit-trigger:active{transform:scale(.95);background:var(--panel2)}
+.tg-profile-editor-backdrop{position:fixed;inset:0;z-index:1000;background:rgba(0,0,0,.62);display:flex;align-items:flex-end;justify-content:center;padding:14px}
+.tg-profile-editor{width:min(100%,520px);max-height:min(88dvh,760px);overflow:auto;background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 18px 60px #0007}
+.tg-profile-editor-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:16px}
+.tg-profile-editor-head h3{margin:0;font-size:18px}
+.tg-profile-editor-close{width:34px;height:34px;border-radius:50%;background:var(--panel2);color:var(--text);font-size:20px}
+.tg-profile-photo-edit{display:flex;align-items:center;gap:13px;margin-bottom:18px}
+.tg-profile-photo-preview{width:68px;height:68px;border-radius:50%;overflow:hidden;display:grid;place-items:center;flex:none;background:linear-gradient(145deg,#9b72f5,#5830a9);color:white;font-size:25px;font-weight:800}
+.tg-profile-photo-preview img{width:100%;height:100%;object-fit:cover}
+.tg-profile-photo-buttons{display:flex;flex-direction:column;align-items:flex-start;gap:7px}
+.tg-profile-photo-buttons button{color:var(--accent);font-size:13px;font-weight:700}
+.tg-profile-editor label{display:block;margin:13px 0 6px;color:var(--muted);font-size:12px;font-weight:650}
+.tg-profile-editor input:not([type=file]),.tg-profile-editor textarea{width:100%;padding:12px 13px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);color:var(--text);font:inherit;font-size:14px;outline:none}
+.tg-profile-editor textarea{min-height:82px;resize:vertical}
+.tg-profile-editor input:focus,.tg-profile-editor textarea:focus{border-color:var(--accent)}
+.tg-profile-editor-hint{margin:8px 0 14px;color:var(--muted);font-size:11px;line-height:1.45}
+.tg-profile-editor-save{width:100%;padding:13px 15px;border-radius:13px;background:var(--accent);color:#fff;font-weight:800;margin-top:7px}
+@media(min-width:600px){.tg-profile-editor-backdrop{align-items:center}.tg-profile-editor{border-radius:18px}}
+
 </style>
 </head>
 <body>
@@ -322,6 +344,33 @@ async function renderJournal(){
 }
 async function copyProfileValue(value,label){try{await navigator.clipboard.writeText(String(value));toast(label+' скопирован')}catch{toast('Не удалось скопировать')}}
 async function editProfileBio(){const current=state.me?.bio||'';const value=window.prompt('О себе (до 70 символов)',current);if(value===null)return;const bio=value.trim();if(bio.length>70){toast('Максимум 70 символов');return}try{const data=await api('/api/profile',{method:'POST',body:JSON.stringify({bio})});state.me.bio=data.bio;renderProfile();toast('Описание профиля сохранено')}catch(e){toast(e.message||'Не удалось сохранить описание')}}
+
+async function openProfileEditor(){
+ const current=state.me||{},reg=current.registration||{},tu=tg?.initDataUnsafe?.user||{};
+ const overlay=el('div','tg-profile-editor-backdrop'),panel=el('div','tg-profile-editor');
+ const head=el('div','tg-profile-editor-head');head.append(el('h3','','Изменить профиль'));
+ const close=el('button','tg-profile-editor-close','×');close.type='button';close.setAttribute('aria-label','Закрыть');close.onclick=()=>overlay.remove();head.append(close);panel.append(head);
+ const photoRow=el('div','tg-profile-photo-edit'),preview=el('div','tg-profile-photo-preview');
+ const initial=(reg.full_name||[tu.first_name,tu.last_name].filter(Boolean).join(' ')||'П').trim().charAt(0).toLocaleUpperCase('ru');
+ let avatarData=current.avatar_data||'';
+ const paint=()=>{preview.replaceChildren();if(avatarData){const im=el('img');im.src=avatarData;im.alt='Предпросмотр аватара';preview.append(im)}else preview.textContent=initial};
+ paint();
+ const photoBtns=el('div','tg-profile-photo-buttons'),pick=el('button','','Изменить фотографию');pick.type='button';
+ const remove=el('button','','Убрать фотографию');remove.type='button';
+ const file=el('input');file.type='file';file.accept='image/jpeg,image/png,image/webp';file.hidden=true;
+ pick.onclick=()=>file.click();remove.onclick=()=>{avatarData='';paint()};
+ file.onchange=async()=>{const f=file.files?.[0];if(!f)return;if(!/^image\/(jpeg|png|webp)$/.test(f.type)){toast('Выберите JPG, PNG или WebP');file.value='';return}if(f.size>8*1024*1024){toast('Файл должен быть меньше 8 МБ');file.value='';return}try{const data=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(f)});const img=await new Promise((resolve,reject)=>{const image=new Image();image.onload=()=>resolve(image);image.onerror=reject;image.src=data});const canvas=document.createElement('canvas'),side=512;canvas.width=side;canvas.height=side;const ctx=canvas.getContext('2d');const scale=Math.max(side/img.width,side/img.height),w=img.width*scale,h=img.height*scale;ctx.drawImage(img,(side-w)/2,(side-h)/2,w,h);avatarData=canvas.toDataURL('image/jpeg',.82);paint()}catch{toast('Не удалось обработать изображение')}};
+ photoBtns.append(pick,remove,file);photoRow.append(preview,photoBtns);panel.append(photoRow);
+ const form=el('form','');
+ const addField=(label,type,value,max,placeholder)=>{const l=el('label','',label),input=el('input');input.type=type;input.value=value||'';if(max)input.maxLength=max;if(placeholder)input.placeholder=placeholder;form.append(l,input);return input};
+ const name=addField('ФИО','text',reg.full_name,120,'Фамилия Имя Отчество');name.autocomplete='name';name.required=true;
+ const bioLabel=el('label','','О себе');const bio=el('textarea');bio.maxLength=70;bio.value=current.bio||'';bio.placeholder='Расскажите немного о себе';form.append(bioLabel,bio);
+ const birthday=addField('Дата рождения','date',current.birth_date||'',null,'');
+ const hint=el('p','tg-profile-editor-hint','Дата рождения необязательна. Фото и введённые данные сохраняются только в профиле этого приложения.');form.append(hint);
+ const save=el('button','tg-profile-editor-save','Сохранить изменения');save.type='submit';form.append(save);
+ form.onsubmit=async e=>{e.preventDefault();const full_name=name.value.trim(),description=bio.value.trim(),birth_date=birthday.value;if(full_name.split(/\s+/).length<2){toast('Укажите фамилию и имя');return}if(description.length>70){toast('О себе — максимум 70 символов');return}save.disabled=true;save.textContent='Сохранение…';try{const data=await api('/api/profile',{method:'POST',body:JSON.stringify({full_name,bio:description,birth_date,avatar_data:avatarData})});current.registration={...reg,full_name:data.full_name};current.bio=data.bio;current.birth_date=data.birth_date;current.avatar_data=data.avatar_data;state.me=current;overlay.remove();renderProfile();toast('Профиль обновлён')}catch(err){toast(err.message||'Не удалось сохранить профиль');save.disabled=false;save.textContent='Сохранить изменения'}};
+ panel.append(form);overlay.append(panel);overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});document.body.append(overlay);
+}
 function renderProfile(){
  const root=$('#profileContent');root.replaceChildren();
  const u=state.me?.user||{},registered=state.me?.registration||{};
@@ -330,8 +379,9 @@ function renderProfile(){
  const username=u.username?'@'+u.username:'Имя пользователя не задано';
  const initial=(fullName.trim().charAt(0)||'П').toLocaleUpperCase('ru');
  const tu=tg?.initDataUnsafe?.user||{};
- const photo=typeof tu.photo_url==='string'&&tu.photo_url.startsWith('https://')?tu.photo_url:'';
+ const photo=state.me?.avatar_data|| (typeof tu.photo_url==='string'&&tu.photo_url.startsWith('https://')?tu.photo_url:'');
  const hero=el('section','tg-native-hero');
+ const editBtn=el('button','tg-profile-edit-trigger','✎');editBtn.type='button';editBtn.title='Изменить профиль';editBtn.setAttribute('aria-label','Изменить профиль');editBtn.onclick=openProfileEditor;hero.append(editBtn);
  const avatar=el('div','tg-native-avatar',initial);
  if(photo){const img=el('img');img.src=photo;img.alt='Фото профиля';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img)}
  const name=el('h2','tg-native-name',fullName);
@@ -376,7 +426,8 @@ function renderProfile(){
  box=card();
  line(box,'▤','Группа',state.me?.group||GROUP,null);
  line(box,'✓','Статус регистрации',registered.registered?'Завершена':'Не завершена',null,!registered.registered);
- root.append(el('p','tg-native-note','Данные Telegram доступны только для просмотра. ФИО и описание можно изменить в приложении.'));
+ line(box,'▦','Дата рождения',state.me?.birth_date?new Date(state.me.birth_date+'T00:00:00').toLocaleDateString('ru-RU'):'Не указана',openProfileEditor,!state.me?.birth_date);
+ root.append(el('p','tg-native-note','Фото, ФИО, описание и дата рождения относятся только к профилю приложения. Изменения не меняют аккаунт Telegram.'));
 }
 async function renderStudents(){
  const root=$('#studentsContent'),sortButton=$('#studentsSortToggle');root.replaceChildren(el('div','skeleton'));
