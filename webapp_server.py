@@ -436,7 +436,7 @@ async def api_students(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                rows = db.execute("SELECT telegram_id, full_name, username, role, roles_json FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
+                rows = db.execute("SELECT telegram_id, full_name, username, role, roles_json, bio, birth_date, avatar_data FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
                 result = []
                 for row in rows:
                     item = dict(row)
