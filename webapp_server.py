@@ -404,7 +404,7 @@ async def api_admin_overview(request: web.Request) -> web.Response:
         "bells_configured": d.bells.configured,
         "bells": {day: {str(n): [a.strftime("%H:%M"), b.strftime("%H:%M")] for n, (a, b) in slots.items()} for day, slots in d.bells.table.items()},
         "schedule_source": "guspoliteh.ru",
-        "notice": "Расписание загружается с сайта техникума. Фоновые персональные push-уведомления пока не реализованы."})
+        "notice": "Расписание загружается с сайта техникума. Личные уведомления Mini App отправляются в Telegram по настройкам каждого пользователя."})
 
 
 async def api_admin_users(request: web.Request) -> web.Response:
