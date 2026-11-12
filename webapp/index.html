@@ -1227,7 +1227,7 @@ async function openGiftHub(){
      card.append(el('b','',g.name),el('small','',g.gift_type==='collectible'?'Коллекционный · '+g.price+' газяв · осталось '+g.remaining:'Обычный · '+g.price+' газяв'));
      const actions=el('div','gift-item-actions'),buy=el('button','primary','Купить'),send=el('button','','Подарить');
      buy.type=send.type='button';
-     buy.onclick=()=>giftBuy(g.id,0,false,'',render);
+     buy.onclick=()=>{if(confirm('Купить «'+g.name+'» за '+g.price+' газяв?'))giftBuy(g.id,0,false,'',render)};
      send.onclick=async()=>{const recipient=Number(prompt('Telegram ID получателя'));if(!Number.isSafeInteger(recipient)||recipient<=0){toast('Укажите корректный Telegram ID');return}const note=prompt('Подпись к подарку (необязательно)')||'';const anonymous=confirm('Отправить анонимно?');await giftBuy(g.id,recipient,anonymous,note,render)};
      actions.append(buy,send);card.append(actions);content.append(card);
     });
@@ -1237,7 +1237,7 @@ async function openGiftHub(){
     if(!data.gifts.length){content.append(el('div','gift-empty','Здесь появятся ваши подарки'));return}
     data.gifts.forEach(g=>{
      const card=el('article','gift-item');if(g.image_url){const im=el('img');im.src=g.image_url;im.alt=g.name;im.loading='lazy';card.append(im)}
-     card.append(el('b','',g.name),el('small','',g.gift_type==='collectible'?'NFT · №'+g.serial_number+' · '+g.rarity:'Обычный подарок'));
+     card.append(el('b','',g.name),el('small','',g.gift_type==='collectible'?'NFT · №'+g.serial_number+' · '+g.rarity:'Обычный подарок'));if(g.gift_type==='collectible'&&g.attributes){let attrs=g.attributes;try{if(typeof attrs==='string')attrs=JSON.parse(attrs)}catch{}if(attrs&&typeof attrs==='object')card.append(el('small','',Object.entries(attrs).map(([k,v])=>k+': '+v).join(' · ')))}
      const actions=el('div','gift-item-actions'),pin=el('button','',g.is_pinned?'Открепить':'Закрепить'),hide=el('button','',g.is_hidden?'Показать':'Скрыть');
      pin.type=hide.type='button';pin.onclick=()=>giftVisibility(g.id,'pin',!g.is_pinned,render);hide.onclick=()=>giftVisibility(g.id,'hide',!g.is_hidden,render);actions.append(pin,hide);
      if(g.gift_type==='collectible'){
