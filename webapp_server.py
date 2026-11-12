@@ -1640,7 +1640,25 @@ async def api_duties_get(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                students = {int(item["telegram_id"]): item for item in _class_students(db, d)}
+                roster = sorted(_class_students(db, d), key=lambda x: x["full_name"].casefold())
+                if roster:
+                    # Автозаполнение будних дней: один следующий студент по алфавитной очереди.
+                    day = today
+                    for _ in range(15):
+                        if day.weekday() < 5:
+                            exists = db.execute("SELECT 1 FROM class_duties WHERE duty_date=? LIMIT 1", (day.isoformat(),)).fetchone()
+                            if not exists:
+                                previous = db.execute("SELECT student_id FROM class_duties WHERE duty_date<? ORDER BY duty_date DESC, created_at DESC LIMIT 1", (day.isoformat(),)).fetchone()
+                                previous_id = int(previous["student_id"]) if previous else None
+                                previous_index = next((i for i, s in enumerate(roster) if int(s["telegram_id"]) == previous_id), -1)
+                                chosen = roster[(previous_index + 1) % len(roster)]
+                                db.execute("""INSERT OR IGNORE INTO class_duties
+                                    (duty_date, student_id, assigned_by, note, completed_at, created_at)
+                                    VALUES (?, ?, 0, 'Автоматическое назначение', '', ?)""",
+                                    (day.isoformat(), int(chosen["telegram_id"]), datetime.now(timezone.utc).isoformat(timespec="seconds")))
+                        day += timedelta(days=1)
+                    db.commit()
+                students = {int(item["telegram_id"]): item for item in roster}
                 rows = db.execute("""SELECT duty_date, student_id, note, completed_at, assigned_by
                     FROM class_duties WHERE duty_date BETWEEN ? AND ?
                     ORDER BY duty_date, student_id""", (start, end)).fetchall()
@@ -1707,6 +1725,50 @@ async def api_duties_save(request: web.Request) -> web.Response:
     return web.json_response({"saved": True, "date": duty_day.isoformat(), "assigned": len(ids)})
 
 
+async def api_duties_skip(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    if not _journal_can_edit(d, uid):
+        return web.json_response({"error": "forbidden", "message": "Пропускать дежурство могут староста, заместитель и администрация."}, status=403)
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        raise web.HTTPBadRequest(text="Некорректный JSON")
+    if not isinstance(body, dict) or set(body) != {"date", "student_id"} or type(body["student_id"]) is not int or body["student_id"] == 0:
+        raise web.HTTPBadRequest(text="Укажите дату и студента")
+    try:
+        duty_day = date.fromisoformat(body["date"])
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="Некорректная дата")
+    if duty_day.weekday() > 4:
+        raise web.HTTPBadRequest(text="Дежурства назначаются только по будням")
+    next_day = duty_day + timedelta(days=1)
+    while next_day.weekday() > 4:
+        next_day += timedelta(days=1)
+    student_id = body["student_id"]
+    async with d.users_lock:
+        def move():
+            db = _db_connect(d)
+            try:
+                row = db.execute("SELECT assigned_by, note FROM class_duties WHERE duty_date=? AND student_id=?",
+                                 (duty_day.isoformat(), student_id)).fetchone()
+                if not row:
+                    return False
+                db.execute("DELETE FROM class_duties WHERE duty_date=? AND student_id=?", (duty_day.isoformat(), student_id))
+                db.execute("""INSERT OR IGNORE INTO class_duties
+                    (duty_date, student_id, assigned_by, note, completed_at, created_at)
+                    VALUES (?, ?, ?, 'Перенесено после пропуска', '', ?)""",
+                    (next_day.isoformat(), student_id, uid, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+                db.commit()
+                return True
+            finally:
+                db.close()
+        moved = await asyncio.to_thread(move)
+    if not moved:
+        raise web.HTTPNotFound(text="Назначение не найдено")
+    return web.json_response({"saved": True, "next_date": next_day.isoformat()})
+
+
 async def api_duties_complete(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     uid = int((request.get("user") or {}).get("id", 0))
@@ -1766,6 +1828,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_post("/api/presence", api_presence)
     app.router.add_get("/api/duties", api_duties_get)
     app.router.add_put("/api/duties", api_duties_save)
+    app.router.add_post("/api/duties/skip", api_duties_skip)
     app.router.add_post("/api/duties/complete", api_duties_complete)
     app.router.add_get("/api/journal", api_journal_get)
     app.router.add_get("/api/journal/history", api_journal_history)
