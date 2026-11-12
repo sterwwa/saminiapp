@@ -1695,6 +1695,8 @@ async def api_duties_save(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="Некорректная дата")
     if abs((duty_day - datetime.now(d.tz).date()).days) > 180:
         raise web.HTTPBadRequest(text="Можно назначать дежурства только в пределах 180 дней")
+    if duty_day.weekday() > 4:
+        raise web.HTTPBadRequest(text="Дежурства можно назначать только с понедельника по пятницу")
     ids, note = body["student_ids"], body["note"]
     if not isinstance(ids, list) or not 1 <= len(ids) <= 8 or any(type(x) is not int or x == 0 for x in ids) or len(ids) != len(set(ids)):
         raise web.HTTPBadRequest(text="Выберите от 1 до 8 разных студентов")
