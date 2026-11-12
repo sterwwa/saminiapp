@@ -1719,6 +1719,47 @@ async def api_duties_get(request: web.Request) -> web.Response:
                               "can_view_preview": bool(set(roles) & {"starosta", "deputy"}),
                               "today": today.isoformat()})
 
+async def api_duties_rebuild(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    if not _journal_can_edit(d, uid):
+        return web.json_response({"error": "forbidden", "message": "Перестраивать список могут староста, заместитель и администрация."}, status=403)
+    today = datetime.now(d.tz).date()
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    async with d.users_lock:
+        def rebuild():
+            db = _db_connect(d)
+            try:
+                roster = sorted(_class_students(db, d), key=lambda x: x["full_name"].casefold())
+                if len(roster) < 2:
+                    raise ValueError("Для составления графика нужны минимум два студента")
+                db.execute("DELETE FROM class_duties WHERE duty_date>=?", (today.isoformat(),))
+                day, pair_index, count = today, 0, 0
+                while day <= today + timedelta(days=180):
+                    if day.weekday() < 5:
+                        first = pair_index % len(roster)
+                        second = (pair_index + 1) % len(roster)
+                        for pos in (first, second):
+                            db.execute("""INSERT INTO class_duties
+                                (duty_date, student_id, assigned_by, note, completed_at, created_at)
+                                VALUES (?, ?, ?, 'Автоматическое назначение по алфавиту', '', ?)""",
+                                (day.isoformat(), int(roster[pos]["telegram_id"]), uid, stamp))
+                        pair_index = (pair_index + 2) % len(roster)
+                        count += 2
+                    day += timedelta(days=1)
+                db.execute("""INSERT INTO duty_schedule_meta(meta_key, meta_value)
+                    VALUES ('alphabetical_pair_reset_v1', ?)
+                    ON CONFLICT(meta_key) DO UPDATE SET meta_value=excluded.meta_value""", (stamp,))
+                db.commit()
+                return count
+            finally:
+                db.close()
+        try:
+            assigned = await asyncio.to_thread(rebuild)
+        except ValueError as exc:
+            return web.json_response({"error": "invalid", "message": str(exc)}, status=400)
+    return web.json_response({"rebuilt": True, "assigned": assigned, "from": today.isoformat()})
+
 async def api_duties_save(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     uid = int((request.get("user") or {}).get("id", 0))
