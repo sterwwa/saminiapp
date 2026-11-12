@@ -320,6 +320,19 @@ async def cmd_week(m: Message) -> None:
     await send_view(m.chat.id, "week")
 
 
+@dp.callback_query(F.data == "delete_notification")
+async def cb_delete_notification(c: CallbackQuery) -> None:
+    """Удаляет только то личное уведомление, под которым нажата кнопка."""
+    if c.message is None or c.message.chat.type != "private":
+        await c.answer("Эту кнопку можно использовать только в личном чате.", show_alert=True)
+        return
+    await c.answer("Уведомление удалено")
+    try:
+        await c.message.delete()
+    except TelegramAPIError as e:
+        log.info("Не удалось удалить уведомление %s: %s", c.message.message_id, e)
+
+
 @dp.callback_query(F.data.startswith("v:"))
 async def cb_view(c: CallbackQuery) -> None:
     await c.answer()  # убирает «часики» на кнопке
@@ -634,7 +647,10 @@ async def notify_miniapp_users(pref_key: str, event_key: str, message: str) -> N
     for uid in targets:
         try:
             # The marker makes the private-chat cleanup middleware preserve scheduled notices.
-            await bot.send_message(uid, "📬 " + message)
+            delete_markup = InlineKeyboardMarkup(inline_keyboard=[[
+                InlineKeyboardButton(text="✖ Удалить", callback_data="delete_notification")
+            ]])
+            await bot.send_message(uid, "📬 " + message, reply_markup=delete_markup)
             await asyncio.to_thread(_mark_notification_sent, pref_key, event_key, uid)
             delivered += 1
         except TelegramAPIError as e:
