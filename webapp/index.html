@@ -930,10 +930,12 @@ async function renderDuties(){
    api('/api/day?date='+encodeURIComponent(now().date))
   ]);
   if(state.previewRole){data.can_manage=['starosta','deputy'].includes(state.previewRole);data.can_view_preview=['starosta','deputy'].includes(state.previewRole)}
+  const currentRoles=Array.isArray(state.me?.roles)?state.me.roles:[state.me?.role||'student'];
+  const canManage=data.can_manage||currentRoles.some(role=>['starosta','deputy','support'].includes(role));
   root.replaceChildren();
   const heading=el('div','duties-heading-row');
   heading.append(el('div','page-title','Дежурства'));
-  if(data.can_manage){
+  if(canManage){
    const rebuildButton=el('button','textbtn duty-rebuild-button','↻ Обновить список');rebuildButton.type='button';rebuildButton.style.cssText='padding:8px 10px;border:1px solid var(--line);border-radius:11px;background:var(--panel);white-space:nowrap;font-size:12px;font-weight:750';
    rebuildButton.onclick=async()=>{if(!confirm('Перестроить весь график с сегодняшнего дня? Будущие назначения и отметки выполнения будут сброшены. Прошедшая история сохранится.'))return;rebuildButton.disabled=true;rebuildButton.textContent='Перестраиваем…';try{const result=await api('/api/duties/rebuild',{method:'POST'});toast('Список перестроен: '+result.assigned+' назначений');await renderDuties()}catch(error){toast(error.message);rebuildButton.disabled=false;rebuildButton.textContent='↻ Обновить список'}};
    heading.append(rebuildButton);
@@ -941,7 +943,8 @@ async function renderDuties(){
    const menuButton=el('button','textbtn','⋯ Пропуск дежурства');menuButton.type='button';
    const menu=el('div','duties-skip-menu-list');menu.hidden=true;
    const todayLessons=dayData.day?.lessons||[];
-   const canSkipDay=!data.today_skipped&&todayLessons.length>=1&&todayLessons.length<=3&&!todayLessons.some(item=>String(item.number)==='4');
+   // Не прячем действие из-за временно неполного ответа расписания: сервер проверит полный график.
+   const canSkipDay=!data.today_skipped&&(dayData.day?.error||!Array.isArray(dayData.day?.lessons)||(todayLessons.length>=1&&todayLessons.length<=3&&!todayLessons.some(item=>String(item.number)==='4')));
    if(canSkipDay){
     const skipDay=el('button','textbtn','Пропустить день');skipDay.type='button';
     skipDay.onclick=async()=>{
@@ -971,7 +974,7 @@ async function renderDuties(){
    if(preview.length){preview.forEach(x=>previewCard.append(el('div','duty-person-info',x.full_name)))}else previewCard.append(el('p','notice','Назначение появится автоматически.'));
    root.append(previewCard);
   }
-  if(data.can_manage){
+  if(canManage){
    const form=el('form','duty-form');form.append(el('h3','','Назначить дежурство'),el('p','notice','По будням. Каждый день — ровно два человека.'));
    const dateLabel=el('label','', 'Дата уборки'),dateInput=el('select','duty-date-select');dateInput.required=true;
    const firstDay=new Date(data.today+'T00:00:00Z');let addedDays=0;
