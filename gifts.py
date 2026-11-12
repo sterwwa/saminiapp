@@ -189,7 +189,7 @@ async def _remember(conn, uid: int, op: str, key: str, response: dict) -> None:
 
 async def api_catalog(request: web.Request) -> web.Response:
     sort=request.query.get("sort","price_asc")
-    order={"price_asc":"price ASC,id ASC","price_desc":"price DESC,id ASC","rarity":"(rarity_config->>'default') ASC,price ASC,id ASC"}.get(sort,"price ASC,id ASC")
+    order={"price_asc":"price ASC,id ASC","price_desc":"price DESC,id ASC","rarity":"CASE COALESCE(rarity_config->>'default','common') WHEN 'legendary' THEN 1 WHEN 'epic' THEN 2 WHEN 'rare' THEN 3 ELSE 4 END,price ASC,id ASC"}.get(sort,"price ASC,id ASC")
     async with _pool(request).acquire() as conn:
         rows = await conn.fetch("""SELECT id,name,description,image_url,animation_url,category,gift_type,
             price,total_supply,minted_count, GREATEST(COALESCE(total_supply,0)-minted_count,0) AS remaining
