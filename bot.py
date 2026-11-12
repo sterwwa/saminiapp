@@ -102,6 +102,41 @@ async def get_lessons(day: date, fresh: bool = False) -> list[dict]:
     return lessons
 
 
+def _notification_lessons(lessons: list[dict]) -> list[dict]:
+    """Нормализует пары для сравнения: убирает пустые строки и служебный number_text."""
+    result = []
+    for lesson in lessons:
+        item = {
+            "number": lesson.get("number"),
+            "subject": re.sub(r"\\s+", " ", str(lesson.get("subject") or "")).strip(),
+            "room": re.sub(r"\\s+", " ", str(lesson.get("room") or "")).strip(),
+            "teacher": re.sub(r"\\s+", " ", str(lesson.get("teacher") or "")).strip(),
+        }
+        if not any(item[key] for key in ("subject", "room", "teacher")):
+            continue
+        result.append(item)
+    return sorted(
+        result,
+        key=lambda x: (
+            x["number"] if isinstance(x["number"], int) else 99,
+            x["subject"].casefold(), x["room"].casefold(), x["teacher"].casefold(),
+        ),
+    )
+
+
+def _schedule_signature(lessons: list[dict]) -> tuple:
+    """Сигнатура реального содержания занятий, независимая от порядка и регистра."""
+    return tuple(
+        (
+            item["number"],
+            item["subject"].casefold(),
+            item["room"].casefold(),
+            item["teacher"].casefold(),
+        )
+        for item in _notification_lessons(lessons)
+    )
+
+
 async def get_miniapp_lessons(day: date) -> list[dict]:
     """Mini App fetches the requested day directly from the college site."""
     return await get_lessons(day, fresh=True)
@@ -770,38 +805,45 @@ async def check_changes() -> None:
             except ScheduleError as e:
                 log.warning("Проверка изменений %s: %s", day, e)
                 continue
-            old = state.get_snapshot(day)
-            if old is None:
-                state.set_snapshot(day, new)  # первое наблюдение — просто запоминаем
-            elif old != new:
-                # Ошибка отправки в группу не должна блокировать личные уведомления.
-                try:
-                    await bot.send_message(
-                        CHAT_ID,
-                        format_change(GROUP_NAME, day, old, new, times=bells.day_ranges(day)),
-                    )
-                except TelegramAPIError as e:
-                    log.warning(
-                        "Не удалось отправить изменение расписания в группу %s: %s. "
-                        "Продолжаю личные уведомления.",
-                        CHAT_ID,
-                        e,
-                    )
-                except Exception:
-                    log.exception(
-                        "Неожиданная ошибка отправки изменения расписания в группу %s; "
-                        "продолжаю личные уведомления.",
-                        CHAT_ID,
-                    )
+            new_clean = _notification_lessons(new)
+            old_raw = state.get_snapshot(day)
+            if old_raw is None:
+                state.set_snapshot(day, new_clean)  # первое наблюдение — просто запоминаем
+            else:
+                old_clean = _notification_lessons(old_raw)
+                if _schedule_signature(old_clean) != _schedule_signature(new_clean):
+                    # Ошибка отправки в группу не должна блокировать личные уведомления.
+                    try:
+                        await bot.send_message(
+                            CHAT_ID,
+                            format_change(GROUP_NAME, day, old_clean, new_clean, times=bells.day_ranges(day)),
+                        )
+                    except TelegramAPIError as e:
+                        log.warning(
+                            "Не удалось отправить изменение расписания в группу %s: %s. "
+                            "Продолжаю личные уведомления.",
+                            CHAT_ID,
+                            e,
+                        )
+                    except Exception:
+                        log.exception(
+                            "Неожиданная ошибка отправки изменения расписания в группу %s; "
+                            "продолжаю личные уведомления.",
+                            CHAT_ID,
+                        )
 
-                # Личные Telegram и Web Push отправляются независимо от результата группы.
-                try:
-                    await notify_schedule_change(day, old, new)
-                except Exception:
-                    log.exception("Ошибка личных уведомлений об изменении расписания на %s", day)
+                    # Личные Telegram и Web Push отправляются независимо от результата группы.
+                    try:
+                        await notify_schedule_change(day, old_clean, new_clean)
+                    except Exception:
+                        log.exception("Ошибка личных уведомлений об изменении расписания на %s", day)
 
-                state.set_snapshot(day, new)  # событие обработано; не повторяем его каждые 30 минут
-                log.info("Изменение расписания на %s обработано", day)
+                    log.info("Подтверждённое изменение расписания на %s обработано", day)
+
+                # Перезаписываем старый формат снимка, в том числе убираем пустые строки
+                # и служебные подписи, не создавая уведомления о технических отличиях.
+                if old_raw != new_clean:
+                    state.set_snapshot(day, new_clean)
             await asyncio.sleep(1)
 
 
