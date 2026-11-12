@@ -1616,11 +1616,14 @@ async def api_duties_complete(request: web.Request) -> web.Response:
     uid = int((request.get("user") or {}).get("id", 0))
     try:
         body = await request.json()
-        duty_day = date.fromisoformat(body.get("date", ""))
     except (ValueError, json.JSONDecodeError):
-        raise web.HTTPBadRequest(text="Некорректная дата или JSON")
+        raise web.HTTPBadRequest(text="Некорректный JSON")
     if not isinstance(body, dict) or set(body) != {"date", "student_id", "completed"} or type(body["student_id"]) is not int or type(body["completed"]) is not bool:
         raise web.HTTPBadRequest(text="Некорректные данные отметки")
+    try:
+        duty_day = date.fromisoformat(body["date"])
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="Некорректная дата")
     student_id = body["student_id"]
     async with d.users_lock:
         def update():
