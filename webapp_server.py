@@ -57,7 +57,7 @@ CLASS_ROSTER = [
 
 def _person_key(full_name: str) -> tuple[str, str] | None:
     parts = [part.casefold().replace("ё", "е") for part in str(full_name or "").split()]
-    return (parts[0], parts[1]) if len(parts) >= 2 else None
+    return tuple(sorted(parts[:2])) if len(parts) >= 2 else None
 
 
 def _sync_class_roster(db: sqlite3.Connection) -> None:
