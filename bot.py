@@ -108,9 +108,9 @@ def _notification_lessons(lessons: list[dict]) -> list[dict]:
     for lesson in lessons:
         item = {
             "number": lesson.get("number"),
-            "subject": re.sub(r"\\s+", " ", str(lesson.get("subject") or "")).strip(),
-            "room": re.sub(r"\\s+", " ", str(lesson.get("room") or "")).strip(),
-            "teacher": re.sub(r"\\s+", " ", str(lesson.get("teacher") or "")).strip(),
+            "subject": re.sub(r"\s+", " ", str(lesson.get("subject") or "")).strip(),
+            "room": re.sub(r"\s+", " ", str(lesson.get("room") or "")).strip(),
+            "teacher": re.sub(r"\s+", " ", str(lesson.get("teacher") or "")).strip(),
         }
         if not any(item[key] for key in ("subject", "room", "teacher")):
             continue
