@@ -1110,14 +1110,17 @@ async function renderNext(){
    api('/api/day?date='+encodeURIComponent(today))
   ]);
   const viewerId=Number(state.me?.user?.id||state.me?.telegram_id||0);
-  const myDuty=dutyData.duties.find(item=>item.duty_date===today&&Number(item.student_id)===viewerId);
+  const todayDuties=dutyData.duties.filter(item=>item.duty_date===today);
+  const myDuty=todayDuties.find(item=>Number(item.student_id)===viewerId);
   if(myDuty){
+   const partner=todayDuties.find(item=>Number(item.student_id)!==viewerId);
    const lessons=[...(dayData.day?.lessons||[])];
    lessons.sort((a,b)=>min(a.start||'00:00')-min(b.start||'00:00'));
    const room=lessons.length?lessons[lessons.length-1].room:'';
    const banner=el('section','duty-card home-duty-banner');
-   banner.append(el('div','duty-date','СЕГОДНЯ ВЫ ДЕЖУРИТЕ'));
-   banner.append(el('b','home-duty-title','Не забудьте убрать класс'));
+   banner.append(el('div','duty-date','НАПОМИНАНИЕ О ДЕЖУРСТВЕ'));
+   banner.append(el('b','home-duty-title','Сегодня вы дежурите!'));
+   banner.append(el('p','notice',partner?'Ваш напарник: '+partner.full_name:'Напарник пока не назначен'));
    banner.append(el('p','notice',room?'Кабинет последней пары: '+room:'Кабинет последней пары не указан в расписании'));
    root.append(banner);
   }
