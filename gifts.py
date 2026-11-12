@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import os
 import re
-import uuid
+import secrets
 from datetime import datetime, timezone
 
 from aiohttp import web
@@ -78,7 +78,7 @@ CREATE INDEX IF NOT EXISTS gift_ownership_history_instance_idx
     ON gift_ownership_history(gift_instance_id, created_at DESC);
 CREATE TABLE IF NOT EXISTS gift_market_listings (
     id BIGSERIAL PRIMARY KEY,
-    gift_instance_id BIGINT NOT NULL UNIQUE REFERENCES gift_instances(id),
+    gift_instance_id BIGINT NOT NULL REFERENCES gift_instances(id),
     seller_id BIGINT NOT NULL,
     price BIGINT NOT NULL CHECK (price > 0),
     status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'sold', 'cancelled')),
@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS gift_market_listings (
 );
 CREATE INDEX IF NOT EXISTS gift_market_active_idx
     ON gift_market_listings(status, created_at DESC);
+CREATE UNIQUE INDEX IF NOT EXISTS gift_market_one_active_listing_idx
+    ON gift_market_listings(gift_instance_id) WHERE status='active';
 CREATE TABLE IF NOT EXISTS gift_idempotency (
     user_id BIGINT NOT NULL,
     operation TEXT NOT NULL,
@@ -236,9 +238,22 @@ async def api_purchase(request: web.Request) -> web.Response:
             if gift["gift_type"]=="collectible":
                 serial=int(gift["minted_count"])+1
                 rarity_config=gift["rarity_config"] or {}
-                rarity=str(rarity_config.get("default","common"))[:40]
+                rarity_weights=rarity_config.get("weights") if isinstance(rarity_config,dict) else None
+                if isinstance(rarity_weights,dict) and rarity_weights:
+                    choices=[(str(name),max(0,int(weight))) for name,weight in rarity_weights.items()]
+                    total=sum(weight for _,weight in choices)
+                    pick=secrets.randbelow(total) if total else 0
+                    rarity="common"
+                    if total:
+                        for name,weight in choices:
+                            if pick < weight:
+                                rarity=name[:40]
+                                break
+                            pick-=weight
+                else:
+                    rarity=str(rarity_config.get("default","common"))[:40] if isinstance(rarity_config,dict) else "common"
                 attr_config=gift["attributes_config"] or {}
-                attrs={k:(v[0] if isinstance(v,list) and v else v) for k,v in attr_config.items()}
+                attrs={k:(secrets.choice(v) if isinstance(v,list) and v else v) for k,v in attr_config.items()}
                 await conn.execute("UPDATE gift_catalog SET minted_count=minted_count+1 WHERE id=$1",gift_id)
             instance=await conn.fetchrow("""INSERT INTO gift_instances
                 (gift_id,owner_id,serial_number,rarity,attributes,anonymous,message)
@@ -289,6 +304,20 @@ async def api_gift_visibility(request: web.Request) -> web.Response:
             await conn.execute(f"UPDATE gift_instances SET {column}=$2 WHERE id=$1",instance_id,body["value"])
     return web.json_response({"success":True,"value":body["value"]})
 
+async def api_gift_history(request: web.Request) -> web.Response:
+    try: instance_id=int(request.match_info["instance_id"])
+    except ValueError: raise web.HTTPBadRequest(text="Некорректный ID подарка")
+    uid=_uid(request)
+    async with _pool(request).acquire() as conn:
+        owner=await conn.fetchval("SELECT owner_id FROM gift_instances WHERE id=$1",instance_id)
+        if owner is None: raise web.HTTPNotFound(text="Подарок не найден")
+        if int(owner)!=uid and uid not in request.app["deps"].admin_ids:
+            raise web.HTTPForbidden(text="История доступна владельцу подарка")
+        rows=await conn.fetch("""SELECT from_user_id,to_user_id,operation,price,created_at
+            FROM gift_ownership_history WHERE gift_instance_id=$1 ORDER BY id DESC LIMIT 100""",instance_id)
+    return web.json_response({"history":[dict(row) for row in rows]})
+
+
 async def api_market(request: web.Request) -> web.Response:
     async with _pool(request).acquire() as conn:
         rows=await conn.fetch("""SELECT l.id,l.gift_instance_id,l.seller_id,l.price,l.created_at,
@@ -327,13 +356,14 @@ async def api_market_buy(request: web.Request) -> web.Response:
             listing=await conn.fetchrow("SELECT * FROM gift_market_listings WHERE id=$1 FOR UPDATE",listing_id)
             if not listing or listing["status"]!="active":raise web.HTTPConflict(text="Лот уже недоступен")
             if listing["seller_id"]==uid:raise web.HTTPBadRequest(text="Нельзя купить собственный подарок")
-            await conn.execute("INSERT INTO gift_wallets(user_id) VALUES($1) ON CONFLICT DO NOTHING",uid)
-            buyer=await conn.fetchrow("SELECT balance FROM gift_wallets WHERE user_id=$1 FOR UPDATE",uid)
             price=int(listing["price"])
-            if buyer["balance"]<price:raise web.HTTPConflict(text="Недостаточно газяв")
             seller_id=int(listing["seller_id"])
-            await conn.execute("INSERT INTO gift_wallets(user_id) VALUES($1) ON CONFLICT DO NOTHING",seller_id)
-            seller=await conn.fetchrow("SELECT balance FROM gift_wallets WHERE user_id=$1 FOR UPDATE",seller_id)
+            for wallet_id in sorted({uid,seller_id}):
+                await conn.execute("INSERT INTO gift_wallets(user_id) VALUES($1) ON CONFLICT DO NOTHING",wallet_id)
+                await conn.fetchrow("SELECT balance FROM gift_wallets WHERE user_id=$1 FOR UPDATE",wallet_id)
+            buyer=await conn.fetchrow("SELECT balance FROM gift_wallets WHERE user_id=$1",uid)
+            seller=await conn.fetchrow("SELECT balance FROM gift_wallets WHERE user_id=$1",seller_id)
+            if buyer["balance"]<price:raise web.HTTPConflict(text="Недостаточно газяв")
             fee=price*MARKET_FEE_PERCENT//100; payout=price-fee
             buyer_balance=int(buyer["balance"])-price;seller_balance=int(seller["balance"])+payout
             await conn.execute("UPDATE gift_wallets SET balance=$2,updated_at=NOW() WHERE user_id=$1",uid,buyer_balance)
