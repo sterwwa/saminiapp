@@ -180,10 +180,12 @@ async def _remember(conn, uid: int, op: str, key: str, response: dict) -> None:
         uid, op, key, json.dumps(response, ensure_ascii=False))
 
 async def api_catalog(request: web.Request) -> web.Response:
+    sort=request.query.get("sort","price_asc")
+    order={"price_asc":"price ASC,id ASC","price_desc":"price DESC,id ASC","rarity":"(rarity_config->>'default') ASC,price ASC,id ASC"}.get(sort,"price ASC,id ASC")
     async with _pool(request).acquire() as conn:
         rows = await conn.fetch("""SELECT id,name,description,image_url,animation_url,category,gift_type,
             price,total_supply,minted_count, GREATEST(COALESCE(total_supply,0)-minted_count,0) AS remaining
-            FROM gift_catalog WHERE is_active=TRUE ORDER BY gift_type, price, id""")
+            FROM gift_catalog WHERE is_active=TRUE ORDER BY """+order)
     return web.json_response({"gifts":[dict(r) for r in rows], "currency":CURRENCY})
 
 async def api_gift_detail(request: web.Request) -> web.Response:
@@ -215,8 +217,9 @@ async def api_user_gifts(request: web.Request) -> web.Response:
     async with _pool(request).acquire() as conn:
         rows = await conn.fetch("""SELECT i.id,i.gift_id,i.owner_id,i.serial_number,i.rarity,i.attributes,
             i.is_hidden,i.is_pinned,i.anonymous,i.message,i.received_at,
-            g.name,g.description,g.image_url,g.animation_url,g.gift_type,g.category
+            g.name,g.description,g.image_url,g.animation_url,g.gift_type,g.category,l.id AS listing_id
             FROM gift_instances i JOIN gift_catalog g ON g.id=i.gift_id
+            LEFT JOIN gift_market_listings l ON l.gift_instance_id=i.id AND l.status='active'
             WHERE i.owner_id=$1 AND (i.is_hidden=FALSE OR $2=TRUE)
             ORDER BY i.is_pinned DESC,i.received_at DESC""", target, _uid(request)==target)
     return web.json_response({"gifts":[dict(r) for r in rows]})
@@ -310,6 +313,7 @@ async def api_gift_visibility(request: web.Request) -> web.Response:
             row=await conn.fetchrow("SELECT id FROM gift_instances WHERE id=$1 AND owner_id=$2 FOR UPDATE",instance_id,uid)
             if not row:raise web.HTTPNotFound(text="Подарок не найден")
             if field=="pin" and body["value"]:
+                await conn.execute("SELECT pg_advisory_xact_lock($1)",uid)
                 count=await conn.fetchval("SELECT COUNT(*) FROM gift_instances WHERE owner_id=$1 AND is_pinned=TRUE",uid)
                 if count>=MAX_PINNED_GIFTS:raise web.HTTPConflict(text=f"Можно закрепить не более {MAX_PINNED_GIFTS} подарков")
             column="is_pinned" if field=="pin" else "is_hidden"
