@@ -797,7 +797,7 @@ async function sendPresence(){
 }
 function startPresenceTracking(){
  if(presenceTimer)clearInterval(presenceTimer);
- sendPresence();presenceTimer=setInterval(sendPresence,30000);
+ sendPresence();presenceTimer=setInterval(()=>{sendPresence();if(state.page==='students'&&document.visibilityState==='visible')renderStudents()},30000);
  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible')sendPresence()});
  window.addEventListener('focus',sendPresence);
 }
