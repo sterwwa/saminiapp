@@ -1,4 +1,4 @@
-const CACHE_NAME = "vasya-bot-shell-v2";
+const CACHE_NAME = "vasya-bot-shell-v3";
 const SHELL_URLS = ["/", "/manifest.webmanifest", "/icon.svg", "/apple-touch-icon.png"];
 
 self.addEventListener("install", event => {
@@ -69,7 +69,7 @@ self.addEventListener("push", event => {
 });
 self.addEventListener("notificationclick", event => {
   event.notification.close();
-  const target = new URL(event.notification.data?.url || "/", self.location.origin).href;
+  const target = new URL((event.notification.data && event.notification.data.url) || "/", self.location.origin).href;
   event.waitUntil((async () => {
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const client of windows) {
