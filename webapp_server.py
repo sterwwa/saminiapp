@@ -21,6 +21,7 @@ from aiohttp import ClientSession, ClientTimeout, web
 from bells import Bells
 from schedule import ScheduleError
 from tgauth import validate_init_data
+import gifts as gift_api
 
 log = logging.getLogger("webapp")
 INDEX = Path(__file__).resolve().parent / "webapp" / "index.html"
@@ -1533,6 +1534,8 @@ async def api_preferences(request: web.Request) -> web.Response:
 def create_app(deps: Deps) -> web.Application:
     app = web.Application(middlewares=[guard], client_max_size=1024 * 1024)
     app["deps"] = deps
+    app.on_startup.append(gift_api.initialize)
+    app.on_cleanup.append(gift_api.close_pool)
     app.router.add_get("/", index)
     app.router.add_get("/manifest.webmanifest", app_manifest)
     app.router.add_get("/sw.js", app_service_worker)
@@ -1569,6 +1572,21 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_post("/api/push/subscribe", api_push_subscribe)
     app.router.add_post("/api/push/unsubscribe", api_push_unsubscribe)
     app.router.add_post("/api/admin/push/test", api_admin_push_test)
+    app.router.add_get("/api/gifts/catalog", gift_api.api_catalog)
+    app.router.add_get("/api/gifts/{gift_id:\\d+}", gift_api.api_gift_detail)
+    app.router.add_get("/api/users/{user_id:\\d+}/gifts", gift_api.api_user_gifts)
+    app.router.add_get("/api/gifts/instance/{instance_id:\\d+}/history", gift_api.api_gift_history)
+    app.router.add_get("/api/wallet", gift_api.api_wallet)
+    app.router.add_get("/api/wallet/transactions", gift_api.api_wallet_transactions)
+    app.router.add_post("/api/gifts/purchase", gift_api.api_purchase)
+    app.router.add_post("/api/gifts/send", gift_api.api_send_gift)
+    app.router.add_post("/api/gifts/visibility/{field:pin|hide}", gift_api.api_gift_visibility)
+    app.router.add_get("/api/market", gift_api.api_market)
+    app.router.add_post("/api/market/list", gift_api.api_market_list)
+    app.router.add_post("/api/market/buy", gift_api.api_market_buy)
+    app.router.add_post("/api/market/cancel", gift_api.api_market_cancel)
+    app.router.add_post("/api/admin/wallet/credit", gift_api.api_admin_wallet_credit)
+    app.router.add_post("/api/admin/gifts", gift_api.api_admin_create_gift)
     return app
 
 
