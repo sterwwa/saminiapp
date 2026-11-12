@@ -1642,20 +1642,26 @@ async def api_duties_get(request: web.Request) -> web.Response:
             try:
                 roster = sorted(_class_students(db, d), key=lambda x: x["full_name"].casefold())
                 if roster:
-                    # Автозаполнение будних дней: один следующий студент по алфавитной очереди.
+                    # Автозаполнение: ровно два разных студента на каждый будний день.
                     day = today
                     for _ in range(15):
                         if day.weekday() < 5:
-                            exists = db.execute("SELECT 1 FROM class_duties WHERE duty_date=? LIMIT 1", (day.isoformat(),)).fetchone()
-                            if not exists:
-                                previous = db.execute("SELECT student_id FROM class_duties WHERE duty_date<? ORDER BY duty_date DESC, created_at DESC LIMIT 1", (day.isoformat(),)).fetchone()
-                                previous_id = int(previous["student_id"]) if previous else None
-                                previous_index = next((i for i, s in enumerate(roster) if int(s["telegram_id"]) == previous_id), -1)
-                                chosen = roster[(previous_index + 1) % len(roster)]
+                            current_ids = {int(r["student_id"]) for r in db.execute(
+                                "SELECT student_id FROM class_duties WHERE duty_date=?", (day.isoformat(),)).fetchall()}
+                            previous = db.execute("SELECT student_id FROM class_duties WHERE duty_date<? ORDER BY duty_date DESC, created_at DESC LIMIT 1", (day.isoformat(),)).fetchone()
+                            previous_id = int(previous["student_id"]) if previous else None
+                            previous_index = next((i for i, s in enumerate(roster) if int(s["telegram_id"]) == previous_id), -1)
+                            for offset in range(len(roster)):
+                                if len(current_ids) >= 2:
+                                    break
+                                chosen = int(roster[(previous_index + 1 + offset) % len(roster)]["telegram_id"])
+                                if chosen in current_ids:
+                                    continue
                                 db.execute("""INSERT OR IGNORE INTO class_duties
                                     (duty_date, student_id, assigned_by, note, completed_at, created_at)
                                     VALUES (?, ?, 0, 'Автоматическое назначение', '', ?)""",
-                                    (day.isoformat(), int(chosen["telegram_id"]), datetime.now(timezone.utc).isoformat(timespec="seconds")))
+                                    (day.isoformat(), chosen, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+                                current_ids.add(chosen)
                         day += timedelta(days=1)
                     db.commit()
                 students = {int(item["telegram_id"]): item for item in roster}
@@ -1701,8 +1707,8 @@ async def api_duties_save(request: web.Request) -> web.Response:
     if duty_day.weekday() > 4:
         raise web.HTTPBadRequest(text="Дежурства можно назначать только с понедельника по пятницу")
     ids, note = body["student_ids"], body["note"]
-    if not isinstance(ids, list) or not 1 <= len(ids) <= 8 or any(type(x) is not int or x == 0 for x in ids) or len(ids) != len(set(ids)):
-        raise web.HTTPBadRequest(text="Выберите от 1 до 8 разных студентов")
+    if not isinstance(ids, list) or len(ids) != 2 or any(type(x) is not int or x == 0 for x in ids) or len(ids) != len(set(ids)):
+        raise web.HTTPBadRequest(text="Выберите ровно двух разных студентов")
     if not isinstance(note, str) or len(note.strip()) > 160:
         raise web.HTTPBadRequest(text="Примечание — не более 160 символов")
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -1757,16 +1763,38 @@ async def api_duties_skip(request: web.Request) -> web.Response:
         def move():
             db = _db_connect(d)
             try:
-                known = {int(item["telegram_id"]) for item in _class_students(db, d)}
-                if student_id not in known:
+                roster = sorted(_class_students(db, d), key=lambda x: x["full_name"].casefold())
+                known = [int(item["telegram_id"]) for item in roster]
+                today_rows = db.execute("SELECT student_id FROM class_duties WHERE duty_date=? ORDER BY created_at, student_id", (duty_day.isoformat(),)).fetchall()
+                today_ids = [int(row["student_id"]) for row in today_rows]
+                if student_id not in known or student_id not in today_ids or len(today_ids) != 2:
+                    return False
+                # Следующий по алфавитной очереди занимает пропущенное место сегодня.
+                skipped_index = known.index(student_id)
+                replacement = next((known[(skipped_index + step) % len(known)]
+                                    for step in range(1, len(known) + 1)
+                                    if known[(skipped_index + step) % len(known)] not in today_ids), None)
+                if replacement is None:
                     return False
                 db.execute("DELETE FROM class_duties WHERE duty_date=? AND student_id=?", (duty_day.isoformat(), student_id))
+                now = datetime.now(timezone.utc).isoformat(timespec="seconds")
                 db.execute("""INSERT INTO class_duties
                     (duty_date, student_id, assigned_by, note, completed_at, created_at)
-                    VALUES (?, ?, ?, 'Назначен на следующий учебный день', '', ?)
+                    VALUES (?, ?, ?, 'Замена пропустившего дежурство', '', ?)""",
+                    (duty_day.isoformat(), replacement, uid, now))
+                # Пропустивший занимает место заменившего на следующем учебном дне.
+                next_rows = db.execute("SELECT student_id FROM class_duties WHERE duty_date=? ORDER BY created_at, student_id", (next_day.isoformat(),)).fetchall()
+                next_ids = [int(row["student_id"]) for row in next_rows]
+                if replacement in next_ids:
+                    db.execute("DELETE FROM class_duties WHERE duty_date=? AND student_id=?", (next_day.isoformat(), replacement))
+                elif len(next_ids) >= 2:
+                    db.execute("DELETE FROM class_duties WHERE duty_date=? AND student_id=?", (next_day.isoformat(), next_ids[-1]))
+                db.execute("""INSERT INTO class_duties
+                    (duty_date, student_id, assigned_by, note, completed_at, created_at)
+                    VALUES (?, ?, ?, 'Перенесён после пропуска', '', ?)
                     ON CONFLICT(duty_date, student_id) DO UPDATE SET
                     assigned_by=excluded.assigned_by, note=excluded.note, completed_at=''""",
-                    (next_day.isoformat(), student_id, uid, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+                    (next_day.isoformat(), student_id, uid, now))
                 db.commit()
                 return True
             finally:
