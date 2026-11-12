@@ -407,6 +407,10 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
     if "roles_json" not in columns:
         db.execute("ALTER TABLE registered_users ADD COLUMN roles_json TEXT NOT NULL DEFAULT '[\"student\"]'")
         db.execute("UPDATE registered_users SET roles_json = json_array(COALESCE(role, 'student'))")
+    if "last_seen_at" not in columns:
+        db.execute("ALTER TABLE registered_users ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT ''")
+    if "last_seen_source" not in columns:
+        db.execute("ALTER TABLE registered_users ADD COLUMN last_seen_source TEXT NOT NULL DEFAULT ''")
     db.execute("CREATE TABLE IF NOT EXISTS access_settings (id INTEGER PRIMARY KEY CHECK (id = 1), salt TEXT NOT NULL, code_hash TEXT NOT NULL, version INTEGER NOT NULL)")
     access_columns = {row["name"] for row in db.execute("PRAGMA table_info(access_settings)").fetchall()}
     if "code_plain" not in access_columns:
@@ -617,7 +621,7 @@ async def api_students(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                rows = db.execute("SELECT telegram_id, full_name, username, role, roles_json, bio, birth_date, avatar_data FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
+                rows = db.execute("SELECT telegram_id, full_name, username, role, roles_json, bio, birth_date, avatar_data, last_seen_at, last_seen_source FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
                 result = []
                 for row in rows:
                     item = dict(row)
@@ -644,6 +648,44 @@ async def api_students(request: web.Request) -> web.Response:
                 db.close()
         users = await asyncio.to_thread(read)
     return web.json_response({"students": users, "total": len(users)})
+
+    now_utc = datetime.now(timezone.utc)
+    for item in users:
+        raw = item.get("last_seen_at") or ""
+        try:
+            seen = datetime.fromisoformat(raw)
+            if seen.tzinfo is None:
+                seen = seen.replace(tzinfo=timezone.utc)
+            item["online"] = (now_utc - seen.astimezone(timezone.utc)).total_seconds() <= 90
+        except (TypeError, ValueError):
+            item["online"] = False
+        item["last_seen_at"] = raw or None
+        item["last_seen_source"] = item.get("last_seen_source") or None
+
+
+async def api_presence(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    if not uid:
+        return web.json_response({"error": "unauthorized"}, status=401)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    async with d.users_lock:
+        def touch():
+            db = _db_connect(d)
+            try:
+                cur = db.execute(
+                    "UPDATE registered_users SET last_seen_at = ?, last_seen_source = 'miniapp' WHERE telegram_id = ?",
+                    (now, uid),
+                )
+                db.commit()
+                return cur.rowcount > 0
+            finally:
+                db.close()
+        registered = await asyncio.to_thread(touch)
+    if not registered:
+        return web.json_response({"error": "not_registered"}, status=403)
+    return web.json_response({"updated": True, "at": now})
+
 
 async def api_admin_update_role(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
@@ -1464,6 +1506,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
     app.router.add_get("/api/students", api_students)
+    app.router.add_post("/api/presence", api_presence)
     app.router.add_get("/api/journal", api_journal_get)
     app.router.add_get("/api/journal/history", api_journal_history)
     app.router.add_post("/api/journal/send-today-report", api_journal_send_today_report)
