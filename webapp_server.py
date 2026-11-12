@@ -441,6 +441,15 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         id INTEGER PRIMARY KEY CHECK (id = 1),
         last_sync_day TEXT NOT NULL
     )""")
+    db.execute("""CREATE TABLE IF NOT EXISTS class_duties (
+        duty_date TEXT NOT NULL,
+        student_id INTEGER NOT NULL,
+        assigned_by INTEGER NOT NULL,
+        note TEXT NOT NULL DEFAULT '',
+        completed_at TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL,
+        PRIMARY KEY (duty_date, student_id)
+    )""")
     # Restore session headers for absence records saved before the history view.
     db.execute("""INSERT OR IGNORE INTO journal_sessions
         (lesson_date, lesson_number, subject, marked_by, updated_at)
@@ -1530,6 +1539,115 @@ async def api_preferences(request: web.Request) -> web.Response:
     return web.json_response({"preferences": prefs, "saved": True})
 
 
+async def api_duties_get(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    today = datetime.now(d.tz).date()
+    start, end = (today - timedelta(days=30)).isoformat(), (today + timedelta(days=180)).isoformat()
+    async with d.users_lock:
+        def read():
+            db = _db_connect(d)
+            try:
+                rows = db.execute("""
+                    SELECT x.duty_date, x.student_id, u.full_name, x.note,
+                           x.completed_at, x.assigned_by
+                    FROM class_duties x
+                    JOIN registered_users u ON u.telegram_id = x.student_id
+                    WHERE x.duty_date BETWEEN ? AND ?
+                    ORDER BY x.duty_date, u.full_name COLLATE NOCASE
+                """, (start, end)).fetchall()
+                return [dict(row) for row in rows]
+            finally:
+                db.close()
+        duties = await asyncio.to_thread(read)
+    uid = int((request.get("user") or {}).get("id", 0))
+    return web.json_response({"duties": duties, "can_manage": _journal_can_edit(d, uid), "today": today.isoformat()})
+
+
+async def api_duties_save(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    if not _journal_can_edit(d, uid):
+        return web.json_response({"error": "forbidden", "message": "Назначать дежурства могут староста, заместитель и администрация."}, status=403)
+    try:
+        body = await request.json()
+    except (json.JSONDecodeError, ValueError):
+        raise web.HTTPBadRequest(text="Ожидается JSON")
+    if not isinstance(body, dict) or set(body) != {"date", "student_ids", "note"}:
+        raise web.HTTPBadRequest(text="Передайте дату, список студентов и примечание")
+    try:
+        duty_day = date.fromisoformat(body["date"])
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="Некорректная дата")
+    if abs((duty_day - datetime.now(d.tz).date()).days) > 180:
+        raise web.HTTPBadRequest(text="Можно назначать дежурства только в пределах 180 дней")
+    ids, note = body["student_ids"], body["note"]
+    if not isinstance(ids, list) or not 1 <= len(ids) <= 8 or any(type(x) is not int or x <= 0 for x in ids) or len(ids) != len(set(ids)):
+        raise web.HTTPBadRequest(text="Выберите от 1 до 8 разных студентов")
+    if not isinstance(note, str) or len(note.strip()) > 160:
+        raise web.HTTPBadRequest(text="Примечание — не более 160 символов")
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    async with d.users_lock:
+        def save():
+            db = _db_connect(d)
+            try:
+                placeholders = ",".join("?" for _ in ids)
+                known = {int(row["telegram_id"]) for row in db.execute(
+                    f"SELECT telegram_id FROM registered_users WHERE telegram_id IN ({placeholders})", tuple(ids)
+                ).fetchall() if int(row["telegram_id"]) not in d.admin_ids}
+                if known != set(ids):
+                    raise ValueError("В списке есть неизвестные студенты")
+                db.execute("DELETE FROM class_duties WHERE duty_date=?", (duty_day.isoformat(),))
+                db.executemany("""INSERT INTO class_duties
+                    (duty_date, student_id, assigned_by, note, completed_at, created_at)
+                    VALUES (?, ?, ?, ?, '', ?)""",
+                    [(duty_day.isoformat(), student_id, uid, note.strip(), now) for student_id in ids])
+                db.commit()
+            finally:
+                db.close()
+        try:
+            await asyncio.to_thread(save)
+        except ValueError as exc:
+            raise web.HTTPBadRequest(text=str(exc))
+    return web.json_response({"saved": True, "date": duty_day.isoformat(), "assigned": len(ids)})
+
+
+async def api_duties_complete(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    try:
+        duty_day = date.fromisoformat(request.match_info["duty_date"])
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        raise web.HTTPBadRequest(text="Некорректная дата или JSON")
+    if not isinstance(body, dict) or set(body) != {"student_id", "completed"} or type(body["student_id"]) is not int or type(body["completed"]) is not bool:
+        raise web.HTTPBadRequest(text="Некорректные данные отметки")
+    student_id = body["student_id"]
+    async with d.users_lock:
+        def update():
+            db = _db_connect(d)
+            try:
+                row = db.execute("SELECT student_id FROM class_duties WHERE duty_date=? AND student_id=?",
+                                 (duty_day.isoformat(), student_id)).fetchone()
+                if not row:
+                    return False
+                if uid != student_id and not _journal_can_edit(d, uid):
+                    raise PermissionError
+                completed_at = datetime.now(timezone.utc).isoformat(timespec="seconds") if body["completed"] else ""
+                db.execute("UPDATE class_duties SET completed_at=? WHERE duty_date=? AND student_id=?",
+                           (completed_at, duty_day.isoformat(), student_id))
+                db.commit()
+                return True
+            finally:
+                db.close()
+        try:
+            updated = await asyncio.to_thread(update)
+        except PermissionError:
+            return web.json_response({"error": "forbidden", "message": "Отметить выполнение может назначенный студент или староста."}, status=403)
+    if not updated:
+        raise web.HTTPNotFound(text="Дежурство не найдено")
+    return web.json_response({"saved": True, "completed": body["completed"]})
+
+
 def create_app(deps: Deps) -> web.Application:
     app = web.Application(middlewares=[guard], client_max_size=1024 * 1024)
     app["deps"] = deps
@@ -1547,6 +1665,9 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/students", api_students)
     app.router.add_get("/api/students/presence", api_student_presence)
     app.router.add_post("/api/presence", api_presence)
+    app.router.add_get("/api/duties", api_duties_get)
+    app.router.add_put("/api/duties", api_duties_save)
+    app.router.add_post("/api/duties/{duty_date:\\d{4}-\\d{2}-\\d{2}}/complete", api_duties_complete)
     app.router.add_get("/api/journal", api_journal_get)
     app.router.add_get("/api/journal/history", api_journal_history)
     app.router.add_post("/api/journal/send-today-report", api_journal_send_today_report)
