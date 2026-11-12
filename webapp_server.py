@@ -1670,7 +1670,7 @@ async def api_duties_get(request: web.Request) -> web.Response:
                     else:
                         # Поддерживаем два назначения на каждом новом буднем дне.
                         day = today
-                        for _ in range(15):
+                        while day <= today + timedelta(days=180):
                             if day.weekday() < 5:
                                 current_ids = {int(r["student_id"]) for r in db.execute(
                                     "SELECT student_id FROM class_duties WHERE duty_date=?", (day.isoformat(),)).fetchall()}
@@ -1936,6 +1936,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/students/presence", api_student_presence)
     app.router.add_post("/api/presence", api_presence)
     app.router.add_get("/api/duties", api_duties_get)
+    app.router.add_post("/api/duties/rebuild", api_duties_rebuild)
     app.router.add_put("/api/duties", api_duties_save)
     app.router.add_post("/api/duties/skip", api_duties_skip)
     app.router.add_post("/api/duties/complete", api_duties_complete)
