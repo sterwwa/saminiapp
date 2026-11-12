@@ -301,6 +301,8 @@ async def api_send_gift(request: web.Request) -> web.Response:
             await conn.execute("UPDATE gift_instances SET owner_id=$2,anonymous=$3,message=$4,is_pinned=FALSE WHERE id=$1",instance_id,recipient,anonymous,message)
             await conn.execute("""INSERT INTO gift_ownership_history(gift_instance_id,from_user_id,to_user_id,operation)
                 VALUES($1,$2,$3,'transfer')""",instance_id,uid,recipient)
+            await conn.execute("""INSERT INTO gift_audit_log(actor_id,action,target_id,details)
+                VALUES($1,'gift_transfer',$2,$3::jsonb)""",uid,instance_id,json.dumps({"recipient_id":recipient,"anonymous":anonymous}))
             response={"success":True,"gift_instance_id":instance_id,"owner_id":recipient}
             await _remember(conn,uid,"send",key,response)
     return web.json_response(response)
@@ -358,6 +360,8 @@ async def api_market_list(request: web.Request) -> web.Response:
             listing=await conn.fetchrow("""INSERT INTO gift_market_listings(gift_instance_id,seller_id,price)
                 VALUES($1,$2,$3) RETURNING id""",instance_id,uid,price)
             await conn.execute("UPDATE gift_instances SET is_pinned=FALSE WHERE id=$1",instance_id)
+            await conn.execute("""INSERT INTO gift_audit_log(actor_id,action,target_id,details)
+                VALUES($1,'market_list',$2,$3::jsonb)""",uid,instance_id,json.dumps({"price":price,"listing_id":int(listing["id"])}))
             response={"success":True,"listing_id":int(listing["id"])}
             await _remember(conn,uid,"market_list",key,response)
     return web.json_response(response)
@@ -392,6 +396,8 @@ async def api_market_buy(request: web.Request) -> web.Response:
             await conn.execute("UPDATE gift_instances SET owner_id=$2,is_pinned=FALSE WHERE id=$1",listing["gift_instance_id"],uid)
             await conn.execute("""INSERT INTO gift_ownership_history(gift_instance_id,from_user_id,to_user_id,operation,price)
                 VALUES($1,$2,$3,'market_sale',$4)""",listing["gift_instance_id"],seller_id,uid,price)
+            await conn.execute("""INSERT INTO gift_audit_log(actor_id,action,target_id,details)
+                VALUES($1,'market_sale',$2,$3::jsonb)""",uid,listing["gift_instance_id"],json.dumps({"seller_id":seller_id,"price":price,"fee":fee}))
             response={"success":True,"listing_id":listing_id,"price":price,"fee":fee,"seller_received":payout,"balance":buyer_balance}
             await _remember(conn,uid,"market_buy",key,response)
     return web.json_response(response)
@@ -409,11 +415,13 @@ async def api_market_cancel(request: web.Request) -> web.Response:
 async def api_admin_wallet_credit(request: web.Request) -> web.Response:
     d=request.app["deps"];uid=_uid(request)
     if uid not in d.admin_ids:return web.json_response({"error":"forbidden"},status=403)
-    body=await _body(request);target,amount=body.get("user_id"),body.get("amount")
+    key=_key(request);body=await _body(request);target,amount=body.get("user_id"),body.get("amount")
     if type(target) is not int or target<=0 or type(amount) is not int or not 1<=amount<=1000000:
         raise web.HTTPBadRequest(text="Укажите пользователя и сумму от 1 до 1000000")
     async with _pool(request).acquire() as conn:
         async with conn.transaction():
+            cached=await _cached(conn,uid,"admin_credit",key)
+            if cached:return web.json_response(cached)
             await conn.execute("INSERT INTO gift_wallets(user_id) VALUES($1) ON CONFLICT DO NOTHING",target)
             row=await conn.fetchrow("SELECT balance FROM gift_wallets WHERE user_id=$1 FOR UPDATE",target)
             balance=int(row["balance"])+amount
@@ -422,7 +430,9 @@ async def api_admin_wallet_credit(request: web.Request) -> web.Response:
                 VALUES($1,$2,$3,'admin_credit')""",target,amount,balance)
             await conn.execute("""INSERT INTO gift_audit_log(actor_id,action,target_id,details)
                 VALUES($1,'wallet_credit',$2,$3::jsonb)""",uid,target,json.dumps({"amount":amount}))
-    return web.json_response({"success":True,"user_id":target,"amount":amount,"balance":balance,"currency":CURRENCY})
+            response={"success":True,"user_id":target,"amount":amount,"balance":balance,"currency":CURRENCY}
+            await _remember(conn,uid,"admin_credit",key,response)
+    return web.json_response(response)
 
 async def api_admin_create_gift(request: web.Request) -> web.Response:
     d=request.app["deps"]
