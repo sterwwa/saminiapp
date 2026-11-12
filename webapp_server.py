@@ -1615,11 +1615,11 @@ async def api_duties_complete(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     uid = int((request.get("user") or {}).get("id", 0))
     try:
-        duty_day = date.fromisoformat(request.match_info["duty_date"])
         body = await request.json()
+        duty_day = date.fromisoformat(body.get("date", ""))
     except (ValueError, json.JSONDecodeError):
         raise web.HTTPBadRequest(text="Некорректная дата или JSON")
-    if not isinstance(body, dict) or set(body) != {"student_id", "completed"} or type(body["student_id"]) is not int or type(body["completed"]) is not bool:
+    if not isinstance(body, dict) or set(body) != {"date", "student_id", "completed"} or type(body["student_id"]) is not int or type(body["completed"]) is not bool:
         raise web.HTTPBadRequest(text="Некорректные данные отметки")
     student_id = body["student_id"]
     async with d.users_lock:
@@ -1667,7 +1667,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_post("/api/presence", api_presence)
     app.router.add_get("/api/duties", api_duties_get)
     app.router.add_put("/api/duties", api_duties_save)
-    app.router.add_post("/api/duties/{duty_date:\\d{4}-\\d{2}-\\d{2}}/complete", api_duties_complete)
+    app.router.add_post("/api/duties/complete", api_duties_complete)
     app.router.add_get("/api/journal", api_journal_get)
     app.router.add_get("/api/journal/history", api_journal_history)
     app.router.add_post("/api/journal/send-today-report", api_journal_send_today_report)
