@@ -1718,15 +1718,18 @@ async def api_duties_get(request: web.Request) -> web.Response:
                     item["full_name"] = student["full_name"]
                     item["registered"] = bool(student["registered"])
                     duties.append(item)
-                return duties
+                skipped_today = bool(db.execute(
+                    "SELECT 1 FROM duty_no_school_days WHERE duty_date=?", (today.isoformat(),)
+                ).fetchone())
+                return duties, skipped_today
             finally:
                 db.close()
-        duties = await asyncio.to_thread(read)
+        duties, today_skipped = await asyncio.to_thread(read)
     uid = int((request.get("user") or {}).get("id", 0))
     roles = _journal_roles(d, uid)
     return web.json_response({"duties": duties, "can_manage": _journal_can_edit(d, uid),
                               "can_view_preview": bool(set(roles) & {"starosta", "deputy"}),
-                              "today": today.isoformat()})
+                              "today": today.isoformat(), "today_skipped": today_skipped})
 
 async def api_duties_skip_day(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
