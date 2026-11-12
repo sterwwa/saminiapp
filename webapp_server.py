@@ -769,7 +769,10 @@ async def api_students(request: web.Request) -> web.Response:
     priority = {"support": 0, "starosta": 1, "deputy": 2, "moderator": 3, "student": 4}
     users.sort(key=lambda item: (min((priority.get(r, 4) for r in item["roles"]), default=4),
                                  item["full_name"].casefold()))
-    return web.json_response({"students": users, "total": len(users)})
+    registered_total = sum(1 for item in users if item.get("registered"))
+    return web.json_response({"students": users, "total": len(users),
+                              "registered_total": registered_total,
+                              "not_registered_total": len(users) - registered_total})
 
 async def api_student_presence(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
