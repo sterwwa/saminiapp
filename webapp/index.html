@@ -715,7 +715,7 @@ body{
 /* Gifts */
 .gift-wallet-card{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:15px;border:1px solid var(--line);border-radius:17px;background:linear-gradient(130deg,color-mix(in srgb,var(--accent) 18%,var(--panel)),var(--panel));margin:12px 0}
 .gift-wallet-card b{display:block;font-size:18px}.gift-wallet-card small{color:var(--muted);font-size:11px}
-.gift-open-btn{padding:10px 14px;border-radius:12px;background:var(--accent);color:white;font-size:12px;font-weight:800;white-space:nowrap}
+.gift-open-btn{padding:10px 14px;border-radius:12px;background:var(--accent);color:white;font-size:12px;font-weight:800;white-space:nowrap}.gift-admin-btn{padding:9px 11px;border-radius:11px;background:var(--panel2);color:var(--text);font-size:11px;font-weight:750}
 .gift-modal{position:fixed;z-index:80;inset:0;background:rgba(0,0,0,.7);backdrop-filter:blur(8px);display:flex;align-items:flex-end;justify-content:center;padding:12px 10px calc(12px + env(safe-area-inset-bottom))}
 .gift-sheet{width:min(100%,560px);max-height:90vh;overflow:auto;background:var(--bg);border:1px solid var(--line);border-radius:24px;padding:16px;box-shadow:var(--shadow);animation:sheetIn .25s var(--motion-enter) both}
 .gift-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}.gift-modal-head h2{margin:0;font-size:20px}.gift-close{width:34px;height:34px;border-radius:50%;background:var(--panel2);font-size:22px}
@@ -1196,10 +1196,34 @@ async function giftRequestKey(){return (crypto?.randomUUID?.()||('gift-'+Date.no
 async function renderGiftSummary(root){
  const section=el('section','gift-wallet-card'),copy=el('div'),balance=el('b','','…');
  copy.append(balance,el('small','','Ваш баланс · газявы'));const open=el('button','gift-open-btn','Подарки');open.type='button';open.onclick=openGiftHub;
- section.append(copy,open);root.append(section);
+ section.append(copy,open);
+ if(state.me?.is_admin){const admin=el('button','gift-admin-btn','Управление');admin.type='button';admin.onclick=openGiftAdmin;section.append(admin)}
+ root.append(section);
  try{const data=await api('/api/wallet');balance.textContent=Number(data.balance).toLocaleString('ru-RU')+' газяв';}
  catch(e){balance.textContent=e.status===503?'База подарков не подключена':'Баланс недоступен';}
 }
+async function openGiftAdmin(){
+ const action=prompt('Управление подарками:\n1 — начислить газявы\n2 — добавить подарок');
+ if(action==='1'){
+  const userId=Number(prompt('Telegram ID пользователя')),amount=Number(prompt('Сколько газяв начислить?'));
+  if(!Number.isSafeInteger(userId)||userId<=0||!Number.isSafeInteger(amount)||amount<=0){toast('Некорректные данные');return}
+  try{const result=await api('/api/admin/wallet/credit',{method:'POST',headers:{'Idempotency-Key':await giftRequestKey()},body:JSON.stringify({user_id:userId,amount})});toast('Начислено '+result.amount+' газяв. Баланс: '+result.balance)}
+  catch(e){toast(e.message)}
+  return;
+ }
+ if(action==='2'){
+  const name=prompt('Название подарка'),kind=prompt('Тип: regular или collectible','regular'),price=Number(prompt('Цена в газявах'));
+  if(!name||!['regular','collectible'].includes(kind)||!Number.isSafeInteger(price)||price<0){toast('Некорректные данные');return}
+  const supply=kind==='collectible'?Number(prompt('Тираж коллекции')):null;
+  if(kind==='collectible'&&(!Number.isSafeInteger(supply)||supply<1)){toast('Некорректный тираж');return}
+  const image_url=prompt('URL изображения (https://)')||'',animation_url=prompt('URL GIF-анимации (необязательно)')||'';
+  const rawAttrs=prompt('JSON атрибутов, например {"фон":["Космос","Неон"]}', '{}')||'{}';
+  let attributes_config={};try{attributes_config=JSON.parse(rawAttrs);if(!attributes_config||typeof attributes_config!=='object'||Array.isArray(attributes_config))throw 0}catch{toast('Некорректный JSON атрибутов');return}
+  try{const result=await api('/api/admin/gifts',{method:'POST',body:JSON.stringify({name,gift_type:kind,price,total_supply:supply,image_url,animation_url,attributes_config,rarity_config:{weights:{common:70,rare:20,epic:8,legendary:2}}})});toast('Подарок добавлен · ID '+result.gift_id)}
+  catch(e){toast(e.message)}
+ }
+}
+
 async function openGiftHub(){
  const overlay=el('div','gift-modal'),sheet=el('section','gift-sheet'),head=el('div','gift-modal-head'),title=el('h2','','Подарки'),close=el('button','gift-close','×');
  close.type='button';close.onclick=()=>overlay.remove();head.append(title,close);sheet.append(head);
