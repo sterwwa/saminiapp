@@ -1745,6 +1745,8 @@ async def api_duties_skip(request: web.Request) -> web.Response:
         duty_day = date.fromisoformat(body["date"])
     except (TypeError, ValueError):
         raise web.HTTPBadRequest(text="Некорректная дата")
+    if duty_day != datetime.now(d.tz).date():
+        raise web.HTTPBadRequest(text="Можно перенести дежурство только с текущей даты")
     if duty_day.weekday() > 4:
         raise web.HTTPBadRequest(text="Дежурства назначаются только по будням")
     next_day = duty_day + timedelta(days=1)
