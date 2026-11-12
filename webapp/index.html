@@ -926,7 +926,7 @@ async function renderDuties(){
    const noteLabel=el('label','','Что нужно сделать (необязательно)'),noteInput=el('input');noteInput.type='text';noteInput.maxLength=160;noteInput.placeholder='Например: доска, пол и мусор';noteLabel.append(noteInput);form.append(noteLabel);
    form.append(el('label','','Кого назначить'));
    const list=el('div','duty-student-list');
-   studentsData.students.forEach(student=>{const label=el('label','duty-student-option'),check=el('input');check.type='checkbox';check.value=String(student.telegram_id);label.append(check,el('span','',student.full_name));list.append(label)});
+   studentsData.students.forEach(student=>{const label=el('label','duty-student-option'),check=el('input');check.type='checkbox';check.value=String(student.telegram_id);label.append(check,el('span','',student.full_name+' · '+(student.registered?'зарегистрирован':'не зарегистрирован')));list.append(label)});
    form.append(list);
    const save=el('button','primary','Сохранить дежурство');save.type='submit';form.append(save);
    form.onsubmit=async event=>{event.preventDefault();const ids=[...list.querySelectorAll('input:checked')].map(x=>Number(x.value));if(!ids.length||ids.length>8){toast('Выберите от 1 до 8 студентов');return}save.disabled=true;save.textContent='Сохраняем…';try{await api('/api/duties',{method:'PUT',body:JSON.stringify({date:dateInput.value,student_ids:ids,note:noteInput.value.trim()})});toast('Дежурство назначено');renderDuties()}catch(error){toast(error.message);save.disabled=false;save.textContent='Сохранить дежурство'}};
@@ -1175,7 +1175,7 @@ async function renderJournal(){
     data.students.forEach(student=>{
      const key=sessionKey+'|'+student.telegram_id,isAbsent=absent.has(key);
      const row=el('div','journal-student'),mark=el('button','journal-mark',isAbsent?'Не был':'Был');
-     row.append(el('span','',student.full_name));
+     row.append(el('span','',student.full_name+(student.registered?' · ✓ Зарегистрирован в приложении':' · Не зарегистрирован')));
      mark.type='button';mark.classList.toggle('absent',isAbsent);mark.disabled=!canEdit;
      mark.onclick=()=>{
       const next=!absent.has(key);
@@ -1337,7 +1337,7 @@ async function renderStudents(){
    avatar.type='button';avatar.disabled=!u.registered;avatar.title=u.registered?'Открыть профиль '+u.full_name:'Студент ещё не зарегистрирован';avatar.setAttribute('aria-label',avatar.title);
    if(typeof u.avatar_data==='string'&&u.avatar_data.startsWith('data:image/')){const photo=el('img');photo.src=u.avatar_data;photo.alt='';photo.onerror=()=>{photo.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(photo)}
    if(u.registered)avatar.onclick=()=>openStudentProfile(u);
-   info.append(el('b','student-name-row',u.full_name+(u.is_me?' · Вы':'')),el('small','',u.username?'@'+u.username:'Участник группы'));
+   info.append(el('b','student-name-row',u.full_name+(u.is_me?' · Вы':'')),el('small','',u.username?'@'+u.username:''));
    info.append(el('small','',u.registered?'✓ Зарегистрирован в приложении':'Не зарегистрирован'));head.append(avatar,info);card.append(head);
    if(u.registered){const presence=el('div','student-presence-row');presence.dataset.online=String(!!u.online);
     const dot=el('i',u.online?'presence-dot online':'presence-dot');
