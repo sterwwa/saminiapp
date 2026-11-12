@@ -1206,7 +1206,7 @@ async function openGiftHub(){
  const balance=el('p','gift-balance-line','Баланс загружается…');sheet.append(balance);
  const tabs=el('div','gift-tabs'),content=el('div','gift-grid');sheet.append(tabs,content);overlay.append(sheet);
  overlay.addEventListener('click',e=>{if(e.target===overlay)overlay.remove()});document.body.append(overlay);
- let active='catalog';
+ let active='catalog',catalogSort='price_asc';
  const render=async()=>{
   tabs.replaceChildren();content.replaceChildren();
   for(const [key,label] of [['catalog','Каталог'],['collection','Мои подарки'],['market','Маркет']]){
@@ -1215,7 +1215,12 @@ async function openGiftHub(){
   try{
    const wallet=await api('/api/wallet');balance.textContent='Баланс: '+Number(wallet.balance).toLocaleString('ru-RU')+' газяв';
    if(active==='catalog'){
-    const data=await api('/api/gifts/catalog');
+    const sortRow=el('div','gift-item-actions');
+    for(const [value,label] of [['price_asc','Сначала дешевле'],['price_desc','Сначала дороже'],['rarity','По редкости']]){
+     const sortBtn=el('button',catalogSort===value?'primary':'',label);sortBtn.type='button';sortBtn.onclick=()=>{catalogSort=value;render()};sortRow.append(sortBtn);
+    }
+    content.append(sortRow);
+    const data=await api('/api/gifts/catalog?sort='+catalogSort);
     if(!data.gifts.length){content.append(el('div','gift-empty','Каталог пока пуст. Подарки добавляет администратор.'));return}
     data.gifts.forEach(g=>{
      const card=el('article','gift-item');if(g.image_url){const im=el('img');im.src=g.image_url;im.alt=g.name;im.loading='lazy';card.append(im)}
@@ -1235,7 +1240,16 @@ async function openGiftHub(){
      card.append(el('b','',g.name),el('small','',g.gift_type==='collectible'?'NFT · №'+g.serial_number+' · '+g.rarity:'Обычный подарок'));
      const actions=el('div','gift-item-actions'),pin=el('button','',g.is_pinned?'Открепить':'Закрепить'),hide=el('button','',g.is_hidden?'Показать':'Скрыть');
      pin.type=hide.type='button';pin.onclick=()=>giftVisibility(g.id,'pin',!g.is_pinned,render);hide.onclick=()=>giftVisibility(g.id,'hide',!g.is_hidden,render);actions.append(pin,hide);
-     if(g.gift_type==='collectible'){const list=el('button','','На маркет');list.type='button';list.onclick=async()=>{const price=Number(prompt('Цена в газявах'));if(Number.isSafeInteger(price)&&price>0){try{await api('/api/market/list',{method:'POST',headers:{'Idempotency-Key':await giftRequestKey()},body:JSON.stringify({gift_instance_id:g.id,price})});toast('Подарок выставлен');render()}catch(e){toast(e.message)}}};actions.append(list)}
+     if(g.gift_type==='collectible'){
+      const list=el('button','',g.listing_id?'Снять с маркета':'На маркет');list.type='button';
+      list.onclick=async()=>{
+       try{
+        if(g.listing_id){await api('/api/market/cancel',{method:'POST',body:JSON.stringify({listing_id:g.listing_id})});toast('Лот снят с маркета')}
+        else{const price=Number(prompt('Цена в газявах'));if(!Number.isSafeInteger(price)||price<=0)return;await api('/api/market/list',{method:'POST',headers:{'Idempotency-Key':await giftRequestKey()},body:JSON.stringify({gift_instance_id:g.id,price})});toast('Подарок выставлен')}
+        render();
+       }catch(e){toast(e.message)}
+      };actions.append(list)
+     }
      const transfer=el('button','','Передать');transfer.type='button';transfer.onclick=async()=>{const recipient=Number(prompt('Telegram ID нового владельца'));if(Number.isSafeInteger(recipient)&&recipient>0){try{await api('/api/gifts/send',{method:'POST',headers:{'Idempotency-Key':await giftRequestKey()},body:JSON.stringify({gift_instance_id:g.id,recipient_id:recipient,anonymous:false,message:''})});toast('Подарок передан');render()}catch(e){toast(e.message)}}};actions.append(transfer);
      const history=el('button','','История');history.type='button';history.onclick=async()=>{try{const h=await api('/api/gifts/instance/'+g.id+'/history');alert(h.history.map(x=>x.operation+' · '+(x.from_user_id||'—')+' → '+x.to_user_id).join('\n')||'История пока пуста')}catch(e){toast(e.message)}};actions.append(history);
      card.append(actions);content.append(card);
