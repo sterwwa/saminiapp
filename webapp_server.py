@@ -1772,6 +1772,16 @@ async def api_duties_skip_day(request: web.Request) -> web.Response:
                     (duty_day.isoformat(),)).fetchall()
                 if not rows:
                     return False
+                old_skip_days = db.execute(
+                    "SELECT duty_date, marked_by, created_at FROM duty_no_school_days WHERE duty_date>=? ORDER BY duty_date",
+                    (duty_day.isoformat(),)
+                ).fetchall()
+                shifted_skip_days = []
+                for skip_row in old_skip_days:
+                    target = date.fromisoformat(skip_row["duty_date"]) + timedelta(days=1)
+                    while target.weekday() > 4:
+                        target += timedelta(days=1)
+                    shifted_skip_days.append((target.isoformat(), int(skip_row["marked_by"]), skip_row["created_at"]))
                 shifted = []
                 for row in rows:
                     target = date.fromisoformat(row["duty_date"]) + timedelta(days=1)
@@ -1783,8 +1793,11 @@ async def api_duties_skip_day(request: web.Request) -> web.Response:
                 db.executemany("""INSERT INTO class_duties
                     (duty_date, student_id, assigned_by, note, completed_at, created_at)
                     VALUES (?, ?, ?, ?, ?, ?)""", shifted)
+                db.execute("DELETE FROM duty_no_school_days WHERE duty_date>=?", (duty_day.isoformat(),))
                 db.execute("INSERT INTO duty_no_school_days(duty_date, marked_by, created_at) VALUES (?, ?, ?)",
                            (duty_day.isoformat(), uid, stamp))
+                db.executemany("INSERT INTO duty_no_school_days(duty_date, marked_by, created_at) VALUES (?, ?, ?)",
+                               shifted_skip_days)
                 db.commit()
                 return True
             finally:
