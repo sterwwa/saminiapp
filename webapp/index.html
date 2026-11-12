@@ -13,6 +13,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.10/babel.min.js" crossorigin="anonymous"></script>
 <style>
 :root{--bg:#050508;--panel:#0d0d14;--panel2:#151521;--text:#f7f5ff;--muted:#9692a8;--accent:#8b5cf6;--accentText:#fff;--line:rgba(139,92,246,.17);--good:#36c98f;--warn:#f5b84b;--bad:#f07178;--radius:20px;--shadow:0 14px 36px rgba(0,0,0,.42)}
 :root[data-theme="light"]{--bg:#f3f6fb;--panel:#fff;--panel2:#e9eef6;--text:#172033;--muted:#64728a;--accent:#8b5cf6;--accentText:#fff;--line:rgba(139,92,246,.17);--good:#169c68;--warn:#b87500;--bad:#c73545;--shadow:0 12px 32px rgba(31,48,77,.09)}
@@ -714,7 +715,8 @@ body{
 .role-manage-btn{width:100%;display:flex;align-items:center;gap:9px;margin-top:12px;padding:11px 12px;border:1px solid var(--line);border-radius:12px;background:var(--panel2);color:var(--text);font-size:12px;font-weight:750;text-align:left}.role-manage-btn:active{transform:scale(.99)}.role-manage-icon{width:25px;height:25px;display:grid;place-items:center;border-radius:8px;background:rgba(139,92,246,.16);color:#b99aff;font-size:15px}.role-manage-count{margin-left:auto;min-width:22px;height:22px;padding:0 6px;display:grid;place-items:center;border-radius:7px;background:var(--panel);color:var(--muted);font-size:11px}.role-manager-backdrop{position:fixed;z-index:90;inset:0;display:flex;align-items:flex-end;justify-content:center;padding:14px 12px calc(14px + env(safe-area-inset-bottom));background:rgba(0,0,0,.7);backdrop-filter:blur(9px)}.role-manager-sheet{width:min(100%,500px);max-height:min(84vh,680px);overflow:auto;padding:19px;background:var(--bg);border:1px solid var(--line);border-radius:24px;box-shadow:var(--shadow);animation:appear .18s ease}.role-manager-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:20px}.role-manager-kicker{font-size:10px;font-weight:850;letter-spacing:1.1px;color:var(--muted)}.role-manager-heading h2{margin:5px 0 3px;font-size:21px}.role-manager-heading p{margin:0;color:var(--muted);font-size:13px}.role-manager-close{width:34px;height:34px;flex:none;border-radius:50%;background:var(--panel2);color:var(--text);font-size:22px}.role-manager-section-title{margin:0 0 10px;font-size:12px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}.role-manager-options{display:grid;gap:8px}.role-manager-option{width:100%;display:flex;align-items:center;gap:11px;padding:12px;border:1px solid var(--line);border-radius:13px;background:var(--panel);color:var(--text);text-align:left}.role-manager-option.is-selected{border-color:rgba(167,139,250,.65);background:rgba(139,92,246,.09)}.role-manager-check{width:25px;height:25px;flex:none;display:grid;place-items:center;border:1px solid var(--line);border-radius:8px;background:var(--panel2);color:var(--muted);font-weight:900}.role-manager-option.is-selected .role-manager-check{background:#8b5cf6;border-color:#8b5cf6;color:#fff}.role-manager-copy{display:grid;gap:3px}.role-manager-copy b{font-size:13px}.role-manager-copy small{font-size:11px;color:var(--muted)}.role-manager-starosta .role-manager-copy b{color:#e6b85c}.role-manager-deputy .role-manager-copy b{color:#b99aff}.role-manager-moderator .role-manager-copy b{color:#ff858d}.role-manager-note{display:flex;gap:9px;margin-top:14px;padding:11px;border-radius:11px;background:var(--panel2);color:var(--muted);font-size:11px;line-height:1.45}.role-manager-note span:first-child{color:var(--accent);font-size:14px}.role-manager-actions{display:flex;gap:9px;margin-top:18px}.role-manager-actions button{flex:1;min-height:43px;padding:10px;border-radius:11px;font-size:12px;font-weight:800}.role-manager-cancel{background:var(--panel2);border:1px solid var(--line);color:var(--text)}.role-manager-save{background:var(--accent);color:#fff}.role-manager-save:disabled{opacity:.6}.role-manager-sheet{padding:21px;background:radial-gradient(ellipse at 12% 0%,rgba(124,58,237,.18),transparent 42%),var(--bg);border-color:rgba(167,139,250,.2)}.role-manager-top{align-items:center;margin-bottom:18px}.role-manager-avatar{width:48px;height:48px;flex:none;display:grid;place-items:center;overflow:hidden;border-radius:16px;background:linear-gradient(145deg,#8b5cf6,#4c1d95);color:#fff;font-size:19px;font-weight:900;box-shadow:0 6px 20px rgba(124,58,237,.28)}.role-manager-avatar img{width:100%;height:100%;object-fit:cover}.role-manager-heading{flex:1;min-width:0}.role-manager-heading h2{font-size:22px;letter-spacing:-.5px}.role-manager-kicker{color:#a78bfa}.role-manager-summary{display:flex;align-items:center;justify-content:space-between;margin:2px 0 10px;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:var(--panel2)}.role-manager-summary span{font-size:10px;font-weight:850;letter-spacing:.8px;color:var(--muted)}.role-manager-summary b{min-width:27px;height:27px;display:grid;place-items:center;border-radius:9px;background:rgba(139,92,246,.18);color:#c4b5fd;font-size:13px}.role-manager-options{gap:10px}.role-manager-option{position:relative;min-height:76px;gap:12px;padding:12px;border-radius:15px;background:rgba(255,255,255,.025);transition:border-color .16s,background .16s,transform .16s}.role-manager-option:active{transform:scale(.985)}.role-manager-option.is-selected{background:rgba(139,92,246,.105);border-color:rgba(167,139,250,.58);box-shadow:inset 3px 0 0 #9b7afa}.role-manager-check{width:39px;height:39px;border-radius:12px;border:0;background:var(--panel2)}.role-manager-glyph{font-size:21px;line-height:1}.role-manager-option.is-selected .role-manager-check{background:rgba(139,92,246,.22);color:#c4b5fd}.role-manager-copy{flex:1;gap:5px}.role-manager-copy b{font-size:14px}.role-manager-copy small{font-size:11px;line-height:1.35}.role-manager-starosta .role-manager-copy b{color:#f0c66e}.role-manager-deputy .role-manager-copy b{color:#c4a7ff}.role-manager-moderator .role-manager-copy b{color:#ff9299}.role-manager-toggle{width:37px;height:22px;flex:none;padding:3px;border-radius:99px;background:var(--line);transition:background .18s}.role-manager-toggle-knob{display:block;width:16px;height:16px;border-radius:50%;background:#9ca3af;transition:transform .18s,background .18s}.role-manager-option.is-selected .role-manager-toggle{background:#8055dc}.role-manager-option.is-selected .role-manager-toggle-knob{transform:translateX(15px);background:#fff}.role-manager-note{border:1px solid var(--line);background:var(--panel);border-radius:13px;font-size:11px}.role-manager-actions{margin-top:16px}.role-manager-actions button{min-height:46px;border-radius:13px}.role-manager-save{background:linear-gradient(100deg,#7c3aed,#6366f1);box-shadow:0 6px 18px rgba(99,102,241,.22)}.role-manager-cancel{background:transparent}</style>
 </head>
 <body>
-<script>(()=>{const standalone=window.matchMedia?.('(display-mode: standalone)').matches===true||window.navigator.standalone===true;window.__SA225_STANDALONE__=standalone;if(standalone)document.documentElement.classList.add('pwa-standalone');if(!window.Telegram?.WebApp?.initData&&!standalone)document.documentElement.classList.add('auth-pending')})();</script>
+<div id="legacyStartupNotice" hidden style="margin:16px;padding:16px;border-radius:14px;background:#211b2d;color:#fff;font:14px/1.5 Arial,sans-serif">Не удалось запустить Вася Бот. Проверьте интернет и обновите Google Chrome и Android System WebView, затем откройте приложение снова.</div>
+<script>(function(){var standalone=false;try{standalone=!!((window.matchMedia&&window.matchMedia('(display-mode: standalone)').matches)||window.navigator.standalone===true)}catch(e){}window.__SA225_STANDALONE__=standalone;if(standalone)document.documentElement.classList.add('pwa-standalone');var telegram=window.Telegram&&window.Telegram.WebApp;if(!(telegram&&telegram.initData)&&!standalone)document.documentElement.classList.add('auth-pending')})();</script>
 
 <section id="installLanding" aria-label="Установка приложения">
  <div class="install-inner">
@@ -747,6 +749,32 @@ body{
 <div class="gate" id="registrationGate" hidden><div class="card gate-card"><h2>Ваш профиль</h2><p>Чтобы продолжить, укажите ФИО. Имя и ограниченные данные Telegram будут сохранены в приложении и доступны администратору. Пароли, коды входа и номер телефона не запрашиваются.</p><form id="registrationForm"><label for="fullName">Фамилия, имя и отчество</label><input id="fullName" type="text" maxlength="120" autocomplete="name" required placeholder="Иванов Иван Иванович"><label class="consent"><input id="nameConsent" type="checkbox" required><span>Я согласен(на) на сохранение моего ФИО и указанных данных Telegram для учёта пользователей приложения.</span></label><p id="registrationError" class="notice" role="alert"></p><button class="primary" type="submit">Сохранить профиль</button></form></div></div>
 <div class="gate" id="accessGate" hidden><div class="card gate-card"><h2 id="accessTitle">Код доступа</h2><p id="accessDescription">Введите код, который выдал администратор.</p><form id="accessForm"><label id="accessCodeLabel" for="accessCode">Код доступа</label><input id="accessCode" type="text" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="done" minlength="8" maxlength="64" autocomplete="one-time-code" required><p class="notice" id="accessCodeHint">Введите код от администратора.</p><div id="generatedCodeBlock" hidden><p class="notice">Скопируйте и сохраните код сейчас. Повторно посмотреть его нельзя — только создать новый.</p><code class="generated-code" id="generatedCode"></code><button class="textbtn" id="copyGenerated" type="button">Скопировать код</button></div><label class="preserve-choice" id="preserveChoice" hidden><input id="preserveExisting" type="checkbox"><span>Оставить доступ уже вошедшим пользователям</span></label><p id="accessError" class="notice" role="alert"></p><button class="primary" id="accessSubmit" type="submit">Войти</button><button class="textbtn" id="adminSetAccess" type="button" hidden>Сменить код</button></form></div></div>
 <script>
+(function(){
+  if (!Element.prototype.replaceChildren) {
+    Element.prototype.replaceChildren = function() {
+      while (this.firstChild) this.removeChild(this.firstChild);
+      for (var i = 0; i < arguments.length; i++) {
+        var node = arguments[i];
+        this.appendChild(node instanceof Node ? node : document.createTextNode(String(node)));
+      }
+    };
+  }
+  if (!Object.fromEntries) {
+    Object.fromEntries = function(entries) {
+      var result = {};
+      for (var i = 0; i < entries.length; i++) result[entries[i][0]] = entries[i][1];
+      return result;
+    };
+  }
+  window.setTimeout(function() {
+    if (!document.documentElement.getAttribute('data-app-ready')) {
+      var fallback = document.getElementById('legacyStartupNotice');
+      if (fallback) fallback.hidden = false;
+    }
+  }, 12000);
+})();
+</script>
+<script type="text/babel" data-presets="env">
 'use strict';
 const tg=window.Telegram?.WebApp||null;if(tg){tg.ready();tg.expand();try{tg.setHeaderColor('bg_color');tg.setBackgroundColor(getComputedStyle(document.body).backgroundColor);tg.enableClosingConfirmation?.(false)}catch{}}
 const $=s=>document.querySelector(s), MONTHS=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'], WD=['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'], WDS=['вс','пн','вт','ср','чт','пт','сб'];
@@ -1456,6 +1484,9 @@ function updateConnectionBanner(){if(connectionBanner)connectionBanner.hidden=na
 window.addEventListener('offline',updateConnectionBanner);
 window.addEventListener('online',()=>{updateConnectionBanner();toast('Подключение восстановлено');refreshAll(true)});
 updateConnectionBanner();
+document.documentElement.setAttribute('data-app-ready', '1');
+var startupNotice = document.getElementById('legacyStartupNotice');
+if (startupNotice) startupNotice.hidden = true;
 
 
 </script>
