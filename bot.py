@@ -693,18 +693,21 @@ def _push_day_summary(day: date, lessons: list[dict]) -> str:
 
 
 async def notify_tomorrow(day: date, lessons: list[dict]) -> None:
-    message = render_day(day, lessons)
+    # В личку отправляем короткий анонс; полное расписание доступно в Mini App.
+    summary = _push_day_summary(day, lessons)
+    message = f"📚 Завтра\n{summary}\nОткрой Вася Бот — там всё расписание."
     await notify_miniapp_users("daily_summary", day.isoformat(), message)
     await notify_miniapp_push(
-        "daily_summary", day.isoformat(), "📚 Расписание на завтра", _push_day_summary(day, lessons)
+        "daily_summary", day.isoformat(), "📚 Расписание на завтра", summary
     )
 
 
 async def notify_schedule_change(day: date, old: list[dict], new: list[dict]) -> None:
-    change = format_change(GROUP_NAME, day, old, new, times=bells.day_ranges(day))
     raw = json.dumps({"old": old, "new": new}, ensure_ascii=False, sort_keys=True, default=str)
     event_key = day.isoformat() + ":" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
-    await notify_miniapp_users("schedule_changes", event_key, change)
+    summary = _push_day_summary(day, new)
+    message = f"🔔 Расписание обновлено\n{summary}\nОткрой Вася Бот — там актуальная версия."
+    await notify_miniapp_users("schedule_changes", event_key, message)
     change_preview = (
         f"{WEEKDAYS[day.weekday()].capitalize()}, {day.day} {MONTHS_GEN[day.month - 1]} · "
         "Проверьте обновлённые пары"
