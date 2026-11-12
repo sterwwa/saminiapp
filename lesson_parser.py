@@ -56,6 +56,21 @@ def _clean(text: str) -> str:
     return re.sub(r"\s+", " ", text.replace("\xa0", " ")).strip()
 
 
+def _ordinal_number(text: str) -> int | None:
+    value = _clean(text).casefold().replace("ё", "е")
+    value = re.sub(r"\s+пара$", "", value).strip()
+    if value in ORDINALS:
+        return ORDINALS[value]
+    numeric = re.fullmatch(r"(?:пара\s*)?(\d{1,2})(?:\s*[-.]?\s*(?:я|ая|а))?", value)
+    if numeric:
+        number = int(numeric.group(1))
+        return number if 1 <= number <= 9 else None
+    for word, number in ORDINALS.items():
+        if value == word or value.startswith(word + " "):
+            return number
+    return None
+
+
 def _parse_date(text: str) -> date | None:
     m = re.search(r"(\d{1,2})\s+([а-яё]+)\s+(\d{4})", text.lower())
     if not m or m.group(2) not in MONTHS:
@@ -125,7 +140,7 @@ def parse_schedule(html: str) -> DaySchedule:
 
         lessons.append(
             Lesson(
-                number=ORDINALS.get(number_text.lower()),
+                number=_ordinal_number(number_text),
                 number_text=number_text,
                 subject=subject,
                 room=room,
