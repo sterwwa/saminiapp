@@ -938,7 +938,7 @@ async function renderDuties(){
    const card=el('section','duty-card');card.append(el('div','duty-date',new Date(day+'T00:00:00').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'})));
    groups.get(day).forEach(item=>{
     const row=el('div','duty-person'),avatar=el('div','duty-avatar',(item.full_name||'?').trim()[0]?.toLocaleUpperCase('ru')||'?'),info=el('div','duty-person-info');
-    info.append(el('b','',item.full_name),el('small','',item.note||'Уборка класса'));row.append(avatar,info);
+    info.append(el('b','',item.full_name),el('small','',item.note||'Уборка класса'),el('small','',item.registered?'✓ Зарегистрирован в приложении':'Не зарегистрирован'));row.append(avatar,info);
     const done=!!item.completed_at,viewerId=Number(state.me?.user?.id||state.me?.telegram_id||0),canMark=viewerId===Number(item.student_id)||data.can_manage;
     if(canMark){const btn=el('button',done?'duty-done':'duty-pending',done?'✓ Выполнено':'Отметить');btn.type='button';btn.onclick=async()=>{btn.disabled=true;try{await api('/api/duties/complete',{method:'POST',body:JSON.stringify({date:day,student_id:Number(item.student_id),completed:!done})});renderDuties()}catch(error){toast(error.message);btn.disabled=false}};row.append(btn)}
     else row.append(el('span',done?'duty-done':'duty-pending',done?'✓ Выполнено':'Ожидает'));
@@ -1334,18 +1334,19 @@ async function renderStudents(){
     if(primaryRole!==lastGroup){root.append(el('div','student-group-title',labels[primaryRole]||'Студент'));lastGroup=primaryRole}
    }
    const card=el('div','card');card.dataset.studentId=String(u.telegram_id);const head=el('div','student-head'),initial=(u.full_name.trim()[0]||'У').toLocaleUpperCase('ru'),avatar=el('button','student-avatar',initial),info=el('div','student-info');
-   avatar.type='button';avatar.title='Открыть профиль '+u.full_name;avatar.setAttribute('aria-label','Открыть профиль '+u.full_name);
+   avatar.type='button';avatar.disabled=!u.registered;avatar.title=u.registered?'Открыть профиль '+u.full_name:'Студент ещё не зарегистрирован';avatar.setAttribute('aria-label',avatar.title);
    if(typeof u.avatar_data==='string'&&u.avatar_data.startsWith('data:image/')){const photo=el('img');photo.src=u.avatar_data;photo.alt='';photo.onerror=()=>{photo.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(photo)}
-   avatar.onclick=()=>openStudentProfile(u);
-   info.append(el('b','student-name-row',u.full_name+(u.is_me?' · Вы':'')),el('small','',u.username?'@'+u.username:'Участник группы'));head.append(avatar,info);card.append(head);
-   const presence=el('div','student-presence-row');presence.dataset.online=String(!!u.online);
-   const dot=el('i',u.online?'presence-dot online':'presence-dot');
-   const status=el('span','presence-status',u.online?'Онлайн':relativeLastSeen(u.last_seen_at));
-   presence.append(dot,status);card.append(presence);
+   if(u.registered)avatar.onclick=()=>openStudentProfile(u);
+   info.append(el('b','student-name-row',u.full_name+(u.is_me?' · Вы':'')),el('small','',u.username?'@'+u.username:'Участник группы'));
+   info.append(el('small','',u.registered?'✓ Зарегистрирован в приложении':'Не зарегистрирован'));head.append(avatar,info);card.append(head);
+   if(u.registered){const presence=el('div','student-presence-row');presence.dataset.online=String(!!u.online);
+    const dot=el('i',u.online?'presence-dot online':'presence-dot');
+    const status=el('span','presence-status',u.online?'Онлайн':relativeLastSeen(u.last_seen_at));
+    presence.append(dot,status);card.append(presence)}
    const row=el('div','student-role-row'),badges=el('div','role-badges');
    roles.forEach(role=>badges.append(makeRoleBadge(role,labels[role]||'Студент')));
    row.append(badges);card.append(row);
-   if(admin&&!u.is_me&&u.role!=='support'){
+   if(admin&&u.registered&&!u.is_me&&u.role!=='support'){
     const manage=el('button','role-manage-btn');
     const current=roles.filter(r=>r!=='student');
     manage.type='button';manage.innerHTML='<span class="role-manage-icon">✦</span><span>Управлять ролями</span><span class="role-manage-count">'+current.length+'</span>';
