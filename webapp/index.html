@@ -13,7 +13,6 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.26.10/babel.min.js" crossorigin="anonymous"></script>
 <style>
 :root{--bg:#050508;--panel:#0d0d14;--panel2:#151521;--text:#f7f5ff;--muted:#9692a8;--accent:#8b5cf6;--accentText:#fff;--line:rgba(139,92,246,.17);--good:#36c98f;--warn:#f5b84b;--bad:#f07178;--radius:20px;--shadow:0 14px 36px rgba(0,0,0,.42)}
 :root[data-theme="light"]{--bg:#f3f6fb;--panel:#fff;--panel2:#e9eef6;--text:#172033;--muted:#64728a;--accent:#8b5cf6;--accentText:#fff;--line:rgba(139,92,246,.17);--good:#169c68;--warn:#b87500;--bad:#c73545;--shadow:0 12px 32px rgba(31,48,77,.09)}
@@ -774,7 +773,7 @@ body{
   }, 12000);
 })();
 </script>
-<script type="text/babel" data-presets="env">
+<script>
 'use strict';
 const tg=window.Telegram?.WebApp||null;if(tg){tg.ready();tg.expand();try{tg.setHeaderColor('bg_color');tg.setBackgroundColor(getComputedStyle(document.body).backgroundColor);tg.enableClosingConfirmation?.(false)}catch{}}
 const $=s=>document.querySelector(s), MONTHS=['января','февраля','марта','апреля','мая','июня','июля','августа','сентября','октября','ноября','декабря'], WD=['воскресенье','понедельник','вторник','среда','четверг','пятница','суббота'], WDS=['вс','пн','вт','ср','чт','пт','сб'];
