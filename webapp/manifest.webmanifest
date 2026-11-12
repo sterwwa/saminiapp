@@ -6,7 +6,7 @@
   "lang": "ru",
   "start_url": "/",
   "scope": "/",
-  "display": "standalone",
+  "display": "browser",
   "orientation": "portrait",
   "background_color": "#08080d",
   "theme_color": "#090909",
