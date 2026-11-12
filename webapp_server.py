@@ -664,6 +664,44 @@ async def api_students(request: web.Request) -> web.Response:
 
     return web.json_response({"students": users, "total": len(users)})
 
+async def api_student_presence(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    viewer = int((request.get("user") or {}).get("id", 0))
+    if not await _has_access(d, viewer):
+        return web.json_response({"error": "forbidden", "message": "Нет доступа"}, status=403)
+    async with d.users_lock:
+        def read():
+            db = _db_connect(d)
+            try:
+                return [dict(row) for row in db.execute(
+                    "SELECT telegram_id, last_seen_at FROM registered_users"
+                ).fetchall()]
+            finally:
+                db.close()
+        users = await asyncio.to_thread(read)
+
+    now_utc = datetime.now(timezone.utc)
+    students = []
+    for item in users:
+        uid = int(item["telegram_id"])
+        if uid in d.admin_ids:
+            continue
+        raw = item.get("last_seen_at") or ""
+        try:
+            seen = datetime.fromisoformat(raw)
+            if seen.tzinfo is None:
+                seen = seen.replace(tzinfo=timezone.utc)
+            online = 0 <= (now_utc - seen.astimezone(timezone.utc)).total_seconds() <= 30
+        except (TypeError, ValueError):
+            online = False
+        students.append({
+            "telegram_id": uid,
+            "online": online,
+            "last_seen_at": raw or None,
+        })
+    return web.json_response({"students": students})
+
+
 async def api_presence(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     uid = int((request.get("user") or {}).get("id", 0))
@@ -1507,6 +1545,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_get("/api/week", api_week)
     app.router.add_get("/api/me", api_me)
     app.router.add_get("/api/students", api_students)
+    app.router.add_get("/api/students/presence", api_student_presence)
     app.router.add_post("/api/presence", api_presence)
     app.router.add_get("/api/journal", api_journal_get)
     app.router.add_get("/api/journal/history", api_journal_history)
