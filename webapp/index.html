@@ -942,10 +942,9 @@ async function renderDuties(){
    const menuWrap=el('div','duties-skip-menu');
    const menuButton=el('button','textbtn','⋯ Пропуск дежурства');menuButton.type='button';
    const menu=el('div','duties-skip-menu-list');menu.hidden=true;
-   const todayLessons=dayData.day?.lessons||[];
-   // Не прячем действие из-за временно неполного ответа расписания: сервер проверит полный график.
-   const canSkipDay=!data.today_skipped&&!dayData.day?.error&&dayData.day?.fourth_pair_present===false;
-   if(canSkipDay){
+   // Кнопка доступна старосте и заместителю всегда; сервер перед переносом
+   // повторно проверяет, что четвёртая пара действительно пустая.
+   if(!data.today_skipped){
     const skipDay=el('button','textbtn','Пропустить день');skipDay.type='button';
     skipDay.onclick=async()=>{
      if(!confirm('В этот день нет четвёртой пары. Перенести обе пары дежурных и весь дальнейший график на следующий учебный день?'))return;
