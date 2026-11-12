@@ -729,10 +729,34 @@ async def check_changes() -> None:
             if old is None:
                 state.set_snapshot(day, new)  # первое наблюдение — просто запоминаем
             elif old != new:
-                await bot.send_message(CHAT_ID, format_change(GROUP_NAME, day, old, new, times=bells.day_ranges(day)))
-                await notify_schedule_change(day, old, new)
-                state.set_snapshot(day, new)  # после доставки: повторов не будет
-                log.info("Уведомление об изменении на %s", day)
+                # Ошибка отправки в группу не должна блокировать личные уведомления.
+                try:
+                    await bot.send_message(
+                        CHAT_ID,
+                        format_change(GROUP_NAME, day, old, new, times=bells.day_ranges(day)),
+                    )
+                except TelegramAPIError as e:
+                    log.warning(
+                        "Не удалось отправить изменение расписания в группу %s: %s. "
+                        "Продолжаю личные уведомления.",
+                        CHAT_ID,
+                        e,
+                    )
+                except Exception:
+                    log.exception(
+                        "Неожиданная ошибка отправки изменения расписания в группу %s; "
+                        "продолжаю личные уведомления.",
+                        CHAT_ID,
+                    )
+
+                # Личные Telegram и Web Push отправляются независимо от результата группы.
+                try:
+                    await notify_schedule_change(day, old, new)
+                except Exception:
+                    log.exception("Ошибка личных уведомлений об изменении расписания на %s", day)
+
+                state.set_snapshot(day, new)  # событие обработано; не повторяем его каждые 30 минут
+                log.info("Изменение расписания на %s обработано", day)
             await asyncio.sleep(1)
 
 
