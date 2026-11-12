@@ -1314,7 +1314,7 @@ async function renderStudents(){
  if(sortButton){sortButton.textContent=studentsSort==='roles'?'⇅ По ролям':'⇅ По алфавиту';sortButton.setAttribute('aria-label','Текущая сортировка: '+(studentsSort==='roles'?'по ролям':'по алфавиту')+'. Нажмите, чтобы изменить.')}
  try{
   const data=await api('/api/students');root.replaceChildren();
-  $('#studentsSub').textContent=`Группа ${GROUP} · ${data.total} участников`;
+  $('#studentsSub').textContent=`Группа ${GROUP} · ${data.total} студентов · ${data.registered_total||0} в приложении · ${data.not_registered_total||0} не зарегистрированы`;
   if(!data.students.length){root.append(el('div','card',''));root.lastChild.append(el('h3','','Пока никого нет'),el('p','notice','Студенты появятся здесь после регистрации в приложении.'));return}
   const admin=!!state.me?.is_admin;
   const labels={student:'Студент',deputy:'Зам. старосты',starosta:'Староста',moderator:'Модератор',support:'Разработчик'};
