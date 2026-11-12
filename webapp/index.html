@@ -923,6 +923,9 @@ async function renderDuties(){
   const heading=el('div','duties-heading-row');
   heading.append(el('div','page-title','Дежурства'));
   if(data.can_manage){
+   const rebuildButton=el('button','textbtn','↻ Обновить список');rebuildButton.type='button';rebuildButton.style.cssText='padding:8px 10px;border:1px solid var(--line);border-radius:11px;background:var(--panel);white-space:nowrap;font-size:12px;font-weight:750';
+   rebuildButton.onclick=async()=>{if(!confirm('Перестроить весь график с сегодняшнего дня? Будущие назначения и отметки выполнения будут сброшены. Прошедшая история сохранится.'))return;rebuildButton.disabled=true;rebuildButton.textContent='Перестраиваем…';try{const result=await api('/api/duties/rebuild',{method:'POST'});toast('Список перестроен: '+result.assigned+' назначений');await renderDuties()}catch(error){toast(error.message);rebuildButton.disabled=false;rebuildButton.textContent='↻ Обновить список'}};
+   heading.append(rebuildButton);
    const menuWrap=el('div','duties-skip-menu');
    const menuButton=el('button','textbtn','⋯ Пропуск дежурства');menuButton.type='button';
    const menu=el('div','duties-skip-menu-list');menu.hidden=true;
