@@ -353,6 +353,18 @@ async def health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
+def _has_fourth_pair(lessons: list[dict]) -> bool:
+    """Четвёртая пара существует, если в её строке указан предмет или кабинет."""
+    for lesson in lessons:
+        number = str(lesson.get("number") or "").strip().casefold()
+        subject = str(lesson.get("subject") or "").strip()
+        room = str(lesson.get("room") or "").strip()
+        if number in {"4", "четвертая", "четвёртая", "четвертую", "четвёртую"}:
+            if subject not in {"", "-", "—"} or room not in {"", "-", "—"}:
+                return True
+    return False
+
+
 def _day_json(d: Deps, day: date, lessons: list[dict], error: bool, cached: bool = False) -> dict:
     times = d.bells.day_times(day)
     out = []
@@ -384,10 +396,13 @@ async def api_day(request: web.Request) -> web.Response:
     if abs((day - today).days) > MAX_SHIFT_DAYS:
         raise web.HTTPBadRequest(text="Дата вне допустимого диапазона")
     try:
-        result = _day_json(d, day, await d.get_lessons(day), False)
+        raw_lessons = await d.get_lessons(day)
+        result = _day_json(d, day, raw_lessons, False)
+        result["fourth_pair_present"] = _has_fourth_pair(raw_lessons)
     except ScheduleError as e:
         log.warning("API %s: %s", day, e)
         result = _day_json(d, day, [], True)
+        result["fourth_pair_present"] = None
     except Exception:
         log.exception("Неожиданная ошибка получения расписания на %s", day)
         result = _day_json(d, day, [], True)
@@ -1749,12 +1764,14 @@ async def api_duties_skip_day(request: web.Request) -> web.Response:
     if duty_day != datetime.now(d.tz).date() or duty_day.weekday() > 4:
         raise web.HTTPBadRequest(text="Можно пропустить только текущий учебный день")
     try:
-        lessons = _day_json(d, duty_day, await d.get_lessons(duty_day), False)["lessons"]
+        raw_lessons = await d.get_lessons(duty_day)
+        fourth_pair_present = _has_fourth_pair(raw_lessons)
+        lessons = _day_json(d, duty_day, raw_lessons, False)["lessons"]
     except Exception as exc:
         log.warning("Не удалось проверить расписание для пропуска дежурства %s: %s", duty_day, exc)
         return web.json_response({"error": "schedule_unavailable", "message": "Не удалось проверить расписание. Попробуйте позже."}, status=503)
-    if not (1 <= len(lessons) <= 3) or any(str(item.get("number")) == "4" for item in lessons):
-        raise web.HTTPBadRequest(text="Пропустить можно только день с 1–3 парами без четвёртой пары")
+    if fourth_pair_present:
+        raise web.HTTPBadRequest(text="Четвёртая пара заполнена в расписании — пропустить этот день нельзя")
     stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
     async with d.users_lock:
         def shift_schedule():
