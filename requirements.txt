@@ -6,3 +6,4 @@ python-dotenv>=1.0
 tzdata
 aiohttp>=3.9
 pywebpush>=2.0.3
+asyncpg>=0.29,<1
