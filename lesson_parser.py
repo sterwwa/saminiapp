@@ -136,6 +136,8 @@ def parse_schedule(html: str) -> DaySchedule:
         # не является занятием; пустые и служебные заглушки пропускаем.
         empty_titles = {"", "-", "—", "без названия", "занятие без названия"}
         if subject.casefold() in empty_titles or subject.casefold() in {w.casefold() for w in ORDINALS}:
+            if _ordinal_number(number_text) == 4:
+                lessons.append(Lesson(number=4, number_text=number_text, subject="", room="", teacher=""))
             continue
 
         lessons.append(
