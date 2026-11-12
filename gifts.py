@@ -112,6 +112,18 @@ CREATE TABLE IF NOT EXISTS gift_system_wallet (
 INSERT INTO gift_system_wallet(id, balance) VALUES (1, 0) ON CONFLICT(id) DO NOTHING;
 """
 
+def _json_obj(value, fallback=None):
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else (fallback or {})
+        except ValueError:
+            return fallback or {}
+    return fallback or {}
+
+
 def _uid(request: web.Request) -> int:
     return int((request.get("user") or {}).get("id", 0))
 
@@ -160,7 +172,7 @@ async def _cached(conn, uid: int, op: str, key: str):
     row = await conn.fetchrow(
         "SELECT response FROM gift_idempotency WHERE user_id=$1 AND operation=$2 AND request_key=$3",
         uid, op, key)
-    return dict(row["response"]) if row else None
+    return _json_obj(row["response"]) if row else None
 
 async def _remember(conn, uid: int, op: str, key: str, response: dict) -> None:
     await conn.execute(
@@ -237,7 +249,7 @@ async def api_purchase(request: web.Request) -> web.Response:
             serial=None; rarity="common"; attrs={}
             if gift["gift_type"]=="collectible":
                 serial=int(gift["minted_count"])+1
-                rarity_config=gift["rarity_config"] or {}
+                rarity_config=_json_obj(gift["rarity_config"])
                 rarity_weights=rarity_config.get("weights") if isinstance(rarity_config,dict) else None
                 if isinstance(rarity_weights,dict) and rarity_weights:
                     choices=[(str(name),max(0,int(weight))) for name,weight in rarity_weights.items()]
@@ -252,7 +264,7 @@ async def api_purchase(request: web.Request) -> web.Response:
                             pick-=weight
                 else:
                     rarity=str(rarity_config.get("default","common"))[:40] if isinstance(rarity_config,dict) else "common"
-                attr_config=gift["attributes_config"] or {}
+                attr_config=_json_obj(gift["attributes_config"])
                 attrs={k:(secrets.choice(v) if isinstance(v,list) and v else v) for k,v in attr_config.items()}
                 await conn.execute("UPDATE gift_catalog SET minted_count=minted_count+1 WHERE id=$1",gift_id)
             instance=await conn.fetchrow("""INSERT INTO gift_instances
@@ -416,6 +428,10 @@ async def api_admin_create_gift(request: web.Request) -> web.Response:
     if not isinstance(name,str) or not name.strip() or len(name)>100 or kind not in {"regular","collectible"} or type(price) is not int or price<0:
         raise web.HTTPBadRequest(text="Некорректные название, тип или цена")
     supply=body.get("total_supply")
+    rarity_config=body.get("rarity_config", {})
+    attributes_config=body.get("attributes_config", {})
+    if not isinstance(rarity_config,dict) or not isinstance(attributes_config,dict):
+        raise web.HTTPBadRequest(text="Некорректные настройки редкости или атрибутов")
     if kind=="collectible" and (type(supply) is not int or not 1<=supply<=1000000):
         raise web.HTTPBadRequest(text="Для коллекционного подарка укажите тираж")
     if kind=="regular":supply=None
@@ -424,4 +440,6 @@ async def api_admin_create_gift(request: web.Request) -> web.Response:
             VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id""",
             name.strip(),str(body.get("description",""))[:500],str(body.get("image_url",""))[:1000],
             str(body.get("animation_url",""))[:1000],str(body.get("category","other"))[:40],kind,price,supply)
+        await conn.execute("UPDATE gift_catalog SET rarity_config=$2::jsonb,attributes_config=$3::jsonb WHERE id=$1",
+            row["id"],json.dumps(rarity_config),json.dumps(attributes_config))
     return web.json_response({"success":True,"gift_id":int(row["id"])},status=201)
