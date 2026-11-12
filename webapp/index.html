@@ -940,7 +940,7 @@ async function renderDuties(){
     const row=el('div','duty-person'),avatar=el('div','duty-avatar',(item.full_name||'?').trim()[0]?.toLocaleUpperCase('ru')||'?'),info=el('div','duty-person-info');
     info.append(el('b','',item.full_name),el('small','',item.note||'Уборка класса'));row.append(avatar,info);
     const done=!!item.completed_at,viewerId=Number(state.me?.user?.id||state.me?.telegram_id||0),canMark=viewerId===Number(item.student_id)||data.can_manage;
-    if(canMark){const btn=el('button',done?'duty-done':'duty-pending',done?'✓ Выполнено':'Отметить');btn.type='button';btn.onclick=async()=>{btn.disabled=true;try{await api('/api/duties/'+day+'/complete',{method:'POST',body:JSON.stringify({student_id:Number(item.student_id),completed:!done})});renderDuties()}catch(error){toast(error.message);btn.disabled=false}};row.append(btn)}
+    if(canMark){const btn=el('button',done?'duty-done':'duty-pending',done?'✓ Выполнено':'Отметить');btn.type='button';btn.onclick=async()=>{btn.disabled=true;try{await api('/api/duties/complete',{method:'POST',body:JSON.stringify({date:day,student_id:Number(item.student_id),completed:!done})});renderDuties()}catch(error){toast(error.message);btn.disabled=false}};row.append(btn)}
     else row.append(el('span',done?'duty-done':'duty-pending',done?'✓ Выполнено':'Ожидает'));
     card.append(row);
    });root.append(card);
