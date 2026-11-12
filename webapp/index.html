@@ -969,7 +969,7 @@ async function renderDuties(){
    root.append(form);
   }
   const groups=new Map();data.duties.forEach(item=>{if(!groups.has(item.duty_date))groups.set(item.duty_date,[]);groups.get(item.duty_date).push(item)});
-  if(!groups.size){root.append(el('div','empty',''));root.lastChild.append(el('div','emoji','','🧹'),el('h3','','Дежурства пока не назначены'),el('p','','Здесь появится график уборки класса.'));return}
+  if(!groups.size){root.append(el('div','empty',''));root.lastChild.append(el('div','emoji','','🧹'),el('h3','','Дежурства пока не назначены'),el('p','','Здесь появится график уборки класса.'));lockPreviewControls(root);return}
   [...groups.keys()].sort().forEach(day=>{
    const people=groups.get(day).sort((a,b)=>a.full_name.localeCompare(b.full_name,'ru',{sensitivity:'base'}));
    const card=el('section','duty-card');card.append(el('div','duty-date',new Date(day+'T00:00:00').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',year:'numeric'})));
@@ -1153,7 +1153,7 @@ async function renderJournal(){
   };
   const data=await api('/api/journal/history');
   if(seq!==journalRenderSeq)return;
-  const canEdit=data.can_edit===true;
+  const canEdit=state.previewRole?['starosta','deputy'].includes(state.previewRole):data.can_edit===true;
   const absent=new Set(data.absences.map(x=>x.lesson_date+'|'+x.lesson_number+'|'+x.student_id));
   const renderDate=()=>{
    content.replaceChildren();
@@ -1226,6 +1226,7 @@ async function renderJournal(){
     card.append(roster);content.append(card);
    });
    content.append(el('p','notice','Зелёная отметка «Был» — присутствовал · Красная «Не был» — отсутствовал. Все изменения за выбранную дату сохраняются одной кнопкой.'));
+   if(state.previewRole)content.querySelectorAll('button').forEach(control=>{control.disabled=true;control.title='Действия отключены в режиме предпросмотра'});
   };
   dateInput.addEventListener('change',renderDate);
   renderDate();
