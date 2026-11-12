@@ -158,6 +158,20 @@ class PrivateIncomingCleanup(BaseMiddleware):
     """Удаляет сообщения пользователя в личке после обработки; группы не затрагивает."""
 
     async def __call__(self, handler, event, data):
+        if isinstance(event, Message) and event.chat.type == "private" and event.from_user:
+            db = None
+            try:
+                db = sqlite3.connect(DATA_DIR / "miniapp_users.sqlite3", timeout=5)
+                db.execute(
+                    "UPDATE registered_users SET last_seen_at = ?, last_seen_source = 'bot' WHERE telegram_id = ?",
+                    (datetime.now().astimezone().isoformat(timespec="seconds"), event.from_user.id),
+                )
+                db.commit()
+            except sqlite3.Error as e:
+                log.debug("Не удалось обновить активность пользователя: %s", e)
+            finally:
+                if db is not None:
+                    db.close()
         try:
             return await handler(event, data)
         finally:
