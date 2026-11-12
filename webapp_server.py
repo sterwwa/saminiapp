@@ -1676,7 +1676,10 @@ async def api_duties_get(request: web.Request) -> web.Response:
                 db.close()
         duties = await asyncio.to_thread(read)
     uid = int((request.get("user") or {}).get("id", 0))
-    return web.json_response({"duties": duties, "can_manage": _journal_can_edit(d, uid), "today": today.isoformat()})
+    roles = _journal_roles(d, uid)
+    return web.json_response({"duties": duties, "can_manage": _journal_can_edit(d, uid),
+                              "can_view_preview": bool(set(roles) & {"starosta", "deputy"}),
+                              "today": today.isoformat()})
 
 async def api_duties_save(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
@@ -1752,14 +1755,15 @@ async def api_duties_skip(request: web.Request) -> web.Response:
         def move():
             db = _db_connect(d)
             try:
-                row = db.execute("SELECT assigned_by, note FROM class_duties WHERE duty_date=? AND student_id=?",
-                                 (duty_day.isoformat(), student_id)).fetchone()
-                if not row:
+                known = {int(item["telegram_id"]) for item in _class_students(db, d)}
+                if student_id not in known:
                     return False
                 db.execute("DELETE FROM class_duties WHERE duty_date=? AND student_id=?", (duty_day.isoformat(), student_id))
-                db.execute("""INSERT OR IGNORE INTO class_duties
+                db.execute("""INSERT INTO class_duties
                     (duty_date, student_id, assigned_by, note, completed_at, created_at)
-                    VALUES (?, ?, ?, 'Перенесено после пропуска', '', ?)""",
+                    VALUES (?, ?, ?, 'Назначен на следующий учебный день', '', ?)
+                    ON CONFLICT(duty_date, student_id) DO UPDATE SET
+                    assigned_by=excluded.assigned_by, note=excluded.note, completed_at=''""",
                     (next_day.isoformat(), student_id, uid, datetime.now(timezone.utc).isoformat(timespec="seconds")))
                 db.commit()
                 return True
