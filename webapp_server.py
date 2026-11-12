@@ -647,8 +647,8 @@ async def api_students(request: web.Request) -> web.Response:
             finally:
                 db.close()
         users = await asyncio.to_thread(read)
-    return web.json_response({"students": users, "total": len(users)})
 
+    # Статус онлайн рассчитывается по последнему heartbeat Mini App или сообщению боту.
     now_utc = datetime.now(timezone.utc)
     for item in users:
         raw = item.get("last_seen_at") or ""
@@ -656,12 +656,13 @@ async def api_students(request: web.Request) -> web.Response:
             seen = datetime.fromisoformat(raw)
             if seen.tzinfo is None:
                 seen = seen.replace(tzinfo=timezone.utc)
-            item["online"] = (now_utc - seen.astimezone(timezone.utc)).total_seconds() <= 90
+            item["online"] = 0 <= (now_utc - seen.astimezone(timezone.utc)).total_seconds() <= 120
         except (TypeError, ValueError):
             item["online"] = False
         item["last_seen_at"] = raw or None
-        item["last_seen_source"] = item.get("last_seen_source") or None
+        item.pop("last_seen_source", None)
 
+    return web.json_response({"students": users, "total": len(users)})
 
 async def api_presence(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
