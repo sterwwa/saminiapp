@@ -124,6 +124,10 @@ def _json_obj(value, fallback=None):
     return fallback or {}
 
 
+def _record(row) -> dict:
+    return {key:(value.isoformat() if isinstance(value,datetime) else value) for key,value in dict(row).items()}
+
+
 def _uid(request: web.Request) -> int:
     return int((request.get("user") or {}).get("id", 0))
 
@@ -213,7 +217,7 @@ async def api_wallet_transactions(request: web.Request) -> web.Response:
     async with _pool(request).acquire() as conn:
         rows = await conn.fetch("""SELECT id,amount,balance_after,type,reference_id,created_at
             FROM gift_wallet_transactions WHERE user_id=$1 ORDER BY id DESC LIMIT 50""", uid)
-    return web.json_response({"transactions":[dict(r) for r in rows]})
+    return web.json_response({"transactions":[_record(r) for r in rows]})
 
 async def api_user_gifts(request: web.Request) -> web.Response:
     try: target = int(request.match_info["user_id"])
@@ -226,7 +230,7 @@ async def api_user_gifts(request: web.Request) -> web.Response:
             LEFT JOIN gift_market_listings l ON l.gift_instance_id=i.id AND l.status='active'
             WHERE i.owner_id=$1 AND (i.is_hidden=FALSE OR $2=TRUE)
             ORDER BY i.is_pinned DESC,i.received_at DESC""", target, _uid(request)==target)
-    return web.json_response({"gifts":[dict(r) for r in rows]})
+    return web.json_response({"gifts":[_record(r) for r in rows]})
 
 async def api_purchase(request: web.Request) -> web.Response:
     uid, key = _uid(request), _key(request)
@@ -339,7 +343,7 @@ async def api_gift_history(request: web.Request) -> web.Response:
             raise web.HTTPForbidden(text="История доступна владельцу подарка")
         rows=await conn.fetch("""SELECT from_user_id,to_user_id,operation,price,created_at
             FROM gift_ownership_history WHERE gift_instance_id=$1 ORDER BY id DESC LIMIT 100""",instance_id)
-    return web.json_response({"history":[dict(row) for row in rows]})
+    return web.json_response({"history":[_record(row) for row in rows]})
 
 
 async def api_market(request: web.Request) -> web.Response:
@@ -349,7 +353,7 @@ async def api_market(request: web.Request) -> web.Response:
             FROM gift_market_listings l JOIN gift_instances i ON i.id=l.gift_instance_id
             JOIN gift_catalog g ON g.id=i.gift_id WHERE l.status='active'
             ORDER BY l.created_at DESC LIMIT 100""")
-    return web.json_response({"listings":[dict(r) for r in rows],"fee_percent":MARKET_FEE_PERCENT,"currency":CURRENCY})
+    return web.json_response({"listings":[_record(r) for r in rows],"fee_percent":MARKET_FEE_PERCENT,"currency":CURRENCY})
 
 async def api_market_list(request: web.Request) -> web.Response:
     uid,key=_uid(request),_key(request);body=await _body(request)
