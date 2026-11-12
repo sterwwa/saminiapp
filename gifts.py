@@ -168,6 +168,10 @@ async def _wallet(conn, uid: int) -> int:
     row = await conn.fetchrow("SELECT balance FROM gift_wallets WHERE user_id=$1", uid)
     return int(row["balance"])
 
+async def _lock_idempotency(conn, uid: int, op: str, key: str) -> None:
+    await conn.execute("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))", f"{uid}:{op}:{key}")
+
+
 async def _cached(conn, uid: int, op: str, key: str):
     row = await conn.fetchrow(
         "SELECT response FROM gift_idempotency WHERE user_id=$1 AND operation=$2 AND request_key=$3",
@@ -292,6 +296,7 @@ async def api_send_gift(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="Некорректные данные передачи")
     async with _pool(request).acquire() as conn:
         async with conn.transaction():
+            await _lock_idempotency(conn,uid,"send",key)
             cached=await _cached(conn,uid,"send",key)
             if cached:return web.json_response(cached)
             gift=await conn.fetchrow("SELECT * FROM gift_instances WHERE id=$1 FOR UPDATE",instance_id)
@@ -351,6 +356,7 @@ async def api_market_list(request: web.Request) -> web.Response:
     if type(instance_id) is not int or type(price) is not int or price<=0:raise web.HTTPBadRequest(text="Укажите подарок и цену")
     async with _pool(request).acquire() as conn:
         async with conn.transaction():
+            await _lock_idempotency(conn,uid,"market_list",key)
             cached=await _cached(conn,uid,"market_list",key)
             if cached:return web.json_response(cached)
             gift=await conn.fetchrow("""SELECT i.id,i.owner_id,g.gift_type FROM gift_instances i
@@ -371,6 +377,7 @@ async def api_market_buy(request: web.Request) -> web.Response:
     if type(listing_id) is not int:raise web.HTTPBadRequest(text="Некорректный лот")
     async with _pool(request).acquire() as conn:
         async with conn.transaction():
+            await _lock_idempotency(conn,uid,"market_buy",key)
             cached=await _cached(conn,uid,"market_buy",key)
             if cached:return web.json_response(cached)
             listing=await conn.fetchrow("SELECT * FROM gift_market_listings WHERE id=$1 FOR UPDATE",listing_id)
@@ -420,6 +427,7 @@ async def api_admin_wallet_credit(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="Укажите пользователя и сумму от 1 до 1000000")
     async with _pool(request).acquire() as conn:
         async with conn.transaction():
+            await _lock_idempotency(conn,uid,"admin_credit",key)
             cached=await _cached(conn,uid,"admin_credit",key)
             if cached:return web.json_response(cached)
             await conn.execute("INSERT INTO gift_wallets(user_id) VALUES($1) ON CONFLICT DO NOTHING",target)
