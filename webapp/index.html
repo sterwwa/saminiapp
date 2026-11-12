@@ -944,7 +944,7 @@ async function renderDuties(){
    const menu=el('div','duties-skip-menu-list');menu.hidden=true;
    const todayLessons=dayData.day?.lessons||[];
    // Не прячем действие из-за временно неполного ответа расписания: сервер проверит полный график.
-   const canSkipDay=!data.today_skipped&&(dayData.day?.error||!Array.isArray(dayData.day?.lessons)||(todayLessons.length>=1&&todayLessons.length<=3&&!todayLessons.some(item=>String(item.number)==='4')));
+   const canSkipDay=!data.today_skipped&&!dayData.day?.error&&dayData.day?.fourth_pair_present===false;
    if(canSkipDay){
     const skipDay=el('button','textbtn','Пропустить день');skipDay.type='button';
     skipDay.onclick=async()=>{
