@@ -29,8 +29,8 @@ from apscheduler.triggers.interval import IntervalTrigger
 from dotenv import load_dotenv
 
 from bells import Bells, due_reminders, find_current_next, human_delta, timeline, validate_bells
-from formatting import (NUM_EMOJI, date_ru, escape, format_change, format_day, format_reminder,
-                        format_week)
+from formatting import (MONTHS_GEN, NUM_EMOJI, WEEKDAYS, date_ru, escape, format_change,
+                        format_day, format_reminder, format_week, pairs_word)
 from schedule import ScheduleClient, ScheduleError
 from state import State
 from webapp_server import Deps, create_app, start_server
@@ -592,8 +592,13 @@ def _notification_targets(pref_key: str, event_key: str) -> list[int]:
         targets = []
         for (uid,) in rows:
             user_prefs = prefs.get(str(uid), {}) if isinstance(prefs, dict) else {}
-            if isinstance(user_prefs, dict) and user_prefs.get(pref_key, True) is False:
-                continue
+            if isinstance(user_prefs, dict):
+                # Общий переключатель отключает только личные сообщения бота;
+                # Web Push продолжает работать по отдельным настройкам.
+                if user_prefs.get("telegram_dm", True) is False:
+                    continue
+                if user_prefs.get(pref_key, True) is False:
+                    continue
             sent = db.execute(
                 "SELECT 1 FROM notification_deliveries WHERE kind=? AND event_key=? AND telegram_id=?",
                 (pref_key, event_key, uid),
@@ -672,10 +677,27 @@ async def notify_miniapp_push(pref_key: str, event_key: str, title: str, body: s
     log.info("Web Push %s: отправлено %d из %d", pref_key, delivered, len(targets))
 
 
+def _push_day_summary(day: date, lessons: list[dict]) -> str:
+    """Короткое описание дня для системного push — без полного текста расписания."""
+    date_label = f"{WEEKDAYS[day.weekday()].capitalize()}, {day.day} {MONTHS_GEN[day.month - 1]}"
+    if not lessons:
+        return f"{date_label} · занятий нет"
+    times = bells.day_ranges(day)
+    spans = [times[l["number"]] for l in lessons if times and l.get("number") in times]
+    detail = f"{len(lessons)} {pairs_word(len(lessons))}"
+    if spans:
+        start = min(x.split("–")[0] for x in spans)
+        end = max(x.split("–")[1] for x in spans)
+        detail += f" · {start}–{end}"
+    return f"{date_label} · {detail}"
+
+
 async def notify_tomorrow(day: date, lessons: list[dict]) -> None:
     message = render_day(day, lessons)
     await notify_miniapp_users("daily_summary", day.isoformat(), message)
-    await notify_miniapp_push("daily_summary", day.isoformat(), f"Расписание на завтра · {day:%d.%m}", message)
+    await notify_miniapp_push(
+        "daily_summary", day.isoformat(), "📚 Расписание на завтра", _push_day_summary(day, lessons)
+    )
 
 
 async def notify_schedule_change(day: date, old: list[dict], new: list[dict]) -> None:
@@ -683,7 +705,11 @@ async def notify_schedule_change(day: date, old: list[dict], new: list[dict]) ->
     raw = json.dumps({"old": old, "new": new}, ensure_ascii=False, sort_keys=True, default=str)
     event_key = day.isoformat() + ":" + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:20]
     await notify_miniapp_users("schedule_changes", event_key, change)
-    await notify_miniapp_push("schedule_changes", event_key, f"Изменения расписания · {day:%d.%m}", change)
+    change_preview = (
+        f"{WEEKDAYS[day.weekday()].capitalize()}, {day.day} {MONTHS_GEN[day.month - 1]} · "
+        "Проверьте обновлённые пары"
+    )
+    await notify_miniapp_push("schedule_changes", event_key, "🔔 Расписание изменилось", change_preview)
 
 
 async def daily_send() -> None:
