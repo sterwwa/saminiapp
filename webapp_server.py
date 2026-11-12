@@ -656,7 +656,7 @@ async def api_students(request: web.Request) -> web.Response:
             seen = datetime.fromisoformat(raw)
             if seen.tzinfo is None:
                 seen = seen.replace(tzinfo=timezone.utc)
-            item["online"] = 0 <= (now_utc - seen.astimezone(timezone.utc)).total_seconds() <= 60
+            item["online"] = 0 <= (now_utc - seen.astimezone(timezone.utc)).total_seconds() <= 30
         except (TypeError, ValueError):
             item["online"] = False
         item["last_seen_at"] = raw or None
