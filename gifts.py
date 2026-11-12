@@ -239,6 +239,7 @@ async def api_purchase(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="Некорректная подпись")
     async with _pool(request).acquire() as conn:
         async with conn.transaction():
+            await _lock_idempotency(conn,uid,"purchase",key)
             cached = await _cached(conn,uid,"purchase",key)
             if cached: return web.json_response(cached)
             gift = await conn.fetchrow("SELECT * FROM gift_catalog WHERE id=$1 AND is_active=TRUE FOR UPDATE",gift_id)
