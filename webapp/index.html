@@ -1223,12 +1223,12 @@ async function openGiftHub(){
     const data=await api('/api/gifts/catalog?sort='+catalogSort);
     if(!data.gifts.length){content.append(el('div','gift-empty','Каталог пока пуст. Подарки добавляет администратор.'));return}
     data.gifts.forEach(g=>{
-     const card=el('article','gift-item');if(g.image_url){const im=el('img');im.src=g.image_url;im.alt=g.name;im.loading='lazy';card.append(im)}
+     const card=el('article','gift-item');if(g.animation_url||g.image_url){const im=el('img');im.src=g.animation_url||g.image_url;im.alt=g.name;im.loading='lazy';card.append(im)}
      card.append(el('b','',g.name),el('small','',g.gift_type==='collectible'?'Коллекционный · '+g.price+' газяв · осталось '+g.remaining:'Обычный · '+g.price+' газяв'));
      const actions=el('div','gift-item-actions'),buy=el('button','primary','Купить'),send=el('button','','Подарить');
      buy.type=send.type='button';
      buy.onclick=()=>{if(confirm('Купить «'+g.name+'» за '+g.price+' газяв?'))giftBuy(g.id,0,false,'',render)};
-     send.onclick=async()=>{const recipient=Number(prompt('Telegram ID получателя'));if(!Number.isSafeInteger(recipient)||recipient<=0){toast('Укажите корректный Telegram ID');return}const note=prompt('Подпись к подарку (необязательно)')||'';const anonymous=confirm('Отправить анонимно?');await giftBuy(g.id,recipient,anonymous,note,render)};
+     send.onclick=async()=>{const recipient=Number(prompt('Telegram ID получателя'));if(!Number.isSafeInteger(recipient)||recipient<=0){toast('Укажите корректный Telegram ID');return}const note=prompt('Подпись к подарку (необязательно)')||'';const anonymous=confirm('Отправить анонимно?');if(confirm('Купить «'+g.name+'» за '+g.price+' газяв для пользователя '+recipient+'?'))await giftBuy(g.id,recipient,anonymous,note,render)};
      actions.append(buy,send);card.append(actions);content.append(card);
     });
    }else if(active==='collection'){
