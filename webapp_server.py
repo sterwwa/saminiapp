@@ -25,7 +25,7 @@ from tgauth import validate_init_data
 log = logging.getLogger("webapp")
 INDEX = Path(__file__).resolve().parent / "webapp" / "index.html"
 MAX_SHIFT_DAYS = 90
-DEFAULT_PREFS = {"lesson_reminders": True, "schedule_changes": True, "daily_summary": True}
+DEFAULT_PREFS = {"lesson_reminders": True, "schedule_changes": True, "daily_summary": True, "telegram_dm": True}
 FULL_NAME_RE = re.compile(r"^[^\W\d_]+(?:[-'][^\W\d_]+)*(?:\s+[^\W\d_]+(?:[-'][^\W\d_]+)*){1,3}$", re.UNICODE)
 ACCESS_CODE_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
 ACCESS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
