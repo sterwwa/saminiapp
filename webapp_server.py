@@ -27,6 +27,123 @@ INDEX = Path(__file__).resolve().parent / "webapp" / "index.html"
 MAX_SHIFT_DAYS = 90
 DEFAULT_PREFS = {"lesson_reminders": True, "schedule_changes": True, "daily_summary": True, "telegram_dm": True}
 FULL_NAME_RE = re.compile(r"^[^\W\d_]+(?:[-'][^\W\d_]+)*(?:\s+[^\W\d_]+(?:[-'][^\W\d_]+)*){1,3}$", re.UNICODE)
+CLASS_ROSTER = [
+    "Алексеев Сергей Вячеславович",
+    "Андрощук Кирилл Иванович",
+    "Артемов Егор Александрович",
+    "Биндяк Андрей Максимович",
+    "Браташов Станислав Абдуганиевич",
+    "Бровка Александр Игоревич",
+    "Гуськов Сергей Александрович",
+    "Жежера Валерия Евгеньевна",
+    "Жилякова Валерия Сергеевна",
+    "Загонкина Валентина Андреевна",
+    "Зозуля Илья Александрович",
+    "Колесникова Ангелина Олеговна",
+    "Кононов Вячеслав Дмитриевич",
+    "Кузнецов Павел Антонович",
+    "Мамонов Тимур Витальевич",
+    "Петраш Иван Игоревич",
+    "Рогачев Даниил Александрович",
+    "Романенко Кирилл Андреевич",
+    "Руденок Александр Александрович",
+    "Стригунов Артём Максимович",
+    "Сударикова Дарья Тимофеевна",
+    "Сысоев Дмитрий Викторович",
+    "Хачатрян Тигран Артемович",
+    "Чибисов Матвей Сергеевич",
+    "Шугаева Дарина Николаевна"
+]
+
+def _person_key(full_name: str) -> tuple[str, str] | None:
+    parts = [part.casefold().replace("ё", "е") for part in str(full_name or "").split()]
+    return (parts[0], parts[1]) if len(parts) >= 2 else None
+
+
+def _sync_class_roster(db: sqlite3.Connection) -> None:
+    db.execute("""CREATE TABLE IF NOT EXISTS class_roster (
+        roster_id INTEGER PRIMARY KEY,
+        full_name TEXT NOT NULL,
+        matched_telegram_id INTEGER
+    )""")
+    db.executemany(
+        "INSERT INTO class_roster(roster_id, full_name) VALUES(?, ?) "
+        "ON CONFLICT(roster_id) DO UPDATE SET full_name=excluded.full_name",
+        [(i, name) for i, name in enumerate(CLASS_ROSTER, 1)],
+    )
+    registered = db.execute("SELECT telegram_id, full_name FROM registered_users").fetchall()
+    by_name: dict[tuple[str, str], list[int]] = {}
+    for user in registered:
+        key = _person_key(user["full_name"])
+        if key:
+            by_name.setdefault(key, []).append(int(user["telegram_id"]))
+    for student in db.execute("SELECT roster_id, full_name, matched_telegram_id FROM class_roster").fetchall():
+        matches = by_name.get(_person_key(student["full_name"]), [])
+        matched = matches[0] if len(matches) == 1 else None
+        previous = student["matched_telegram_id"]
+        if previous == matched:
+            continue
+        old_id = int(previous) if previous is not None else -int(student["roster_id"])
+        new_id = int(matched) if matched is not None else -int(student["roster_id"])
+        if old_id != new_id:
+            db.execute("""INSERT OR IGNORE INTO journal_absences
+                (lesson_date, lesson_number, student_id, marked_by, updated_at)
+                SELECT lesson_date, lesson_number, ?, marked_by, updated_at
+                FROM journal_absences WHERE student_id=?""", (new_id, old_id))
+            db.execute("DELETE FROM journal_absences WHERE student_id=?", (old_id,))
+            db.execute("""INSERT OR IGNORE INTO class_duties
+                (duty_date, student_id, assigned_by, note, completed_at, created_at)
+                SELECT duty_date, ?, assigned_by, note, completed_at, created_at
+                FROM class_duties WHERE student_id=?""", (new_id, old_id))
+            db.execute("DELETE FROM class_duties WHERE student_id=?", (old_id,))
+        db.execute("UPDATE class_roster SET matched_telegram_id=? WHERE roster_id=?",
+                   (matched, int(student["roster_id"])))
+
+
+def _class_students(db: sqlite3.Connection, d: Deps) -> list[dict]:
+    roster_rows = db.execute("""SELECT r.roster_id, r.full_name, r.matched_telegram_id, u.*
+        FROM class_roster r LEFT JOIN registered_users u
+        ON u.telegram_id=r.matched_telegram_id ORDER BY r.roster_id""").fetchall()
+    result: list[dict] = []
+    matched_ids: set[int] = set()
+    for row in roster_rows:
+        item = dict(row)
+        uid = item.get("matched_telegram_id")
+        if uid is not None and int(uid) not in d.admin_ids:
+            uid = int(uid)
+            matched_ids.add(uid)
+            try:
+                roles = json.loads(item.get("roles_json") or "[]")
+            except (TypeError, json.JSONDecodeError):
+                roles = []
+            if not isinstance(roles, list):
+                roles = []
+            item.update({"telegram_id": uid, "student_id": uid, "registered": True,
+                         "roles": [r for r in roles if r in {"student", "deputy", "starosta", "moderator"}] or ["student"],
+                         "full_name": row["full_name"], "roster_id": int(row["roster_id"])})
+            item.pop("roles_json", None)
+        else:
+            synthetic_id = -int(row["roster_id"])
+            item = {"telegram_id": synthetic_id, "student_id": synthetic_id,
+                    "roster_id": int(row["roster_id"]), "full_name": row["full_name"],
+                    "registered": False, "username": "", "role": "student",
+                    "roles": ["student"], "last_seen_at": "", "avatar_data": ""}
+        result.append(item)
+    for row in db.execute("SELECT * FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall():
+        uid = int(row["telegram_id"])
+        if uid in d.admin_ids or uid in matched_ids:
+            continue
+        item = dict(row)
+        try:
+            roles = json.loads(item.get("roles_json") or "[]")
+        except (TypeError, json.JSONDecodeError):
+            roles = []
+        item["roles"] = [r for r in roles if r in {"student", "deputy", "starosta", "moderator"}] or ["student"]
+        item.update({"student_id": uid, "registered": True, "roster_id": None})
+        item.pop("roles_json", None)
+        result.append(item)
+    return result
+
 ACCESS_CODE_RE = re.compile(r"^[A-Za-z0-9._-]{8,64}$")
 ACCESS_CODE_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
 ACCESS_CODE_ROUNDS = 310_000
@@ -450,6 +567,7 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         created_at TEXT NOT NULL,
         PRIMARY KEY (duty_date, student_id)
     )""")
+    _sync_class_roster(db)
     # Restore session headers for absence records saved before the history view.
     db.execute("""INSERT OR IGNORE INTO journal_sessions
         (lesson_date, lesson_number, subject, marked_by, updated_at)
@@ -630,34 +748,11 @@ async def api_students(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                rows = db.execute("SELECT telegram_id, full_name, username, role, roles_json, bio, birth_date, avatar_data, last_seen_at, last_seen_source FROM registered_users ORDER BY full_name COLLATE NOCASE").fetchall()
-                result = []
-                for row in rows:
-                    item = dict(row)
-                    uid = int(item["telegram_id"])
-                    try:
-                        roles = json.loads(item.get("roles_json") or "[]")
-                    except (TypeError, json.JSONDecodeError):
-                        roles = []
-                    if not isinstance(roles, list):
-                        roles = []
-                    roles = [r for r in roles if r in {"student", "deputy", "starosta", "moderator"}]
-                    if not roles:
-                        roles = ["student"]
-                    if uid in d.admin_ids:
-                        continue
-                    item["roles"] = roles
-                    item.pop("roles_json", None)
-                    item["is_me"] = uid == viewer
-                    result.append(item)
-                priority = {"support": 0, "starosta": 1, "deputy": 2, "moderator": 3, "student": 4}
-                result.sort(key=lambda item: (min((priority.get(r, 4) for r in item["roles"]), default=4), item["full_name"].casefold()))
-                return result
+                return _class_students(db, d)
             finally:
                 db.close()
         users = await asyncio.to_thread(read)
 
-    # Статус онлайн рассчитывается по последнему heartbeat Mini App или сообщению боту.
     now_utc = datetime.now(timezone.utc)
     for item in users:
         raw = item.get("last_seen_at") or ""
@@ -665,12 +760,15 @@ async def api_students(request: web.Request) -> web.Response:
             seen = datetime.fromisoformat(raw)
             if seen.tzinfo is None:
                 seen = seen.replace(tzinfo=timezone.utc)
-            item["online"] = 0 <= (now_utc - seen.astimezone(timezone.utc)).total_seconds() <= 30
+            item["online"] = bool(item.get("registered")) and 0 <= (now_utc - seen.astimezone(timezone.utc)).total_seconds() <= 30
         except (TypeError, ValueError):
             item["online"] = False
         item["last_seen_at"] = raw or None
+        item["is_me"] = int(item["telegram_id"]) == viewer
         item.pop("last_seen_source", None)
-
+    priority = {"support": 0, "starosta": 1, "deputy": 2, "moderator": 3, "student": 4}
+    users.sort(key=lambda item: (min((priority.get(r, 4) for r in item["roles"]), default=4),
+                                 item["full_name"].casefold()))
     return web.json_response({"students": users, "total": len(users)})
 
 async def api_student_presence(request: web.Request) -> web.Response:
@@ -1080,9 +1178,7 @@ async def api_journal_get(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                students = [dict(row) for row in db.execute(
-                    "SELECT telegram_id, full_name FROM registered_users ORDER BY full_name COLLATE NOCASE"
-                ).fetchall() if int(row["telegram_id"]) not in d.admin_ids]
+                students = [{"telegram_id": item["telegram_id"], "full_name": item["full_name"], "registered": item["registered"]} for item in _class_students(db, d)]
                 rows = db.execute(
                     "SELECT lesson_number, student_id FROM journal_absences WHERE lesson_date = ?",
                     (day.isoformat(),)
@@ -1170,9 +1266,7 @@ async def api_journal_history(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                students = [dict(row) for row in db.execute(
-                    "SELECT telegram_id, full_name FROM registered_users ORDER BY full_name COLLATE NOCASE"
-                ).fetchall() if int(row["telegram_id"]) not in d.admin_ids]
+                students = [{"telegram_id": item["telegram_id"], "full_name": item["full_name"], "registered": item["registered"]} for item in _class_students(db, d)]
                 sessions = [dict(row) for row in db.execute(
                     "SELECT lesson_date, lesson_number, subject FROM journal_sessions WHERE subject<>'' ORDER BY subject COLLATE NOCASE, lesson_date, CAST(lesson_number AS INTEGER)"
                 ).fetchall()]
@@ -1317,7 +1411,7 @@ async def api_journal_save(request: web.Request) -> web.Response:
     absent_ids = body["absent_ids"]
     if not isinstance(absent_ids, list) or len(absent_ids) > 200:
         raise web.HTTPBadRequest(text="Некорректный список отсутствующих")
-    if any(type(value) is not int or value <= 0 for value in absent_ids) or len(absent_ids) != len(set(absent_ids)):
+    if any(type(value) is not int or value == 0 for value in absent_ids) or len(absent_ids) != len(set(absent_ids)):
         raise web.HTTPBadRequest(text="Некорректный список студентов")
     async with d.users_lock:
         def save():
@@ -1331,10 +1425,8 @@ async def api_journal_save(request: web.Request) -> web.Response:
                     raise ValueError("Занятие не найдено в сохранённой истории расписания")
                 if absent_ids:
                     placeholders = ",".join("?" for _ in absent_ids)
-                    known = {int(row["telegram_id"]) for row in db.execute(
-                        f"SELECT telegram_id FROM registered_users WHERE telegram_id IN ({placeholders})",
-                        tuple(absent_ids)
-                    ).fetchall() if int(row["telegram_id"]) not in d.admin_ids}
+                    known = {int(item["telegram_id"]) for item in _class_students(db, d)
+                             if int(item["telegram_id"]) in set(absent_ids)}
                     if known != set(absent_ids):
                         raise ValueError("В списке есть неизвестные студенты")
                 now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -1409,10 +1501,8 @@ async def api_journal_bulk_save(request: web.Request) -> web.Response:
                     raise ValueError("Одна или несколько пар не найдены в истории расписания")
                 if all_absent_ids:
                     ids_placeholders = ",".join("?" for _ in all_absent_ids)
-                    known = {int(row["telegram_id"]) for row in db.execute(
-                        f"SELECT telegram_id FROM registered_users WHERE telegram_id IN ({ids_placeholders})",
-                        tuple(all_absent_ids)
-                    ).fetchall() if int(row["telegram_id"]) not in d.admin_ids}
+                    known = {int(item["telegram_id"]) for item in _class_students(db, d)
+                             if int(item["telegram_id"]) in all_absent_ids}
                     if known != all_absent_ids:
                         raise ValueError("В списке есть неизвестные студенты")
                 now = datetime.now(timezone.utc).isoformat(timespec="seconds")
@@ -1547,21 +1637,25 @@ async def api_duties_get(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
-                rows = db.execute("""
-                    SELECT x.duty_date, x.student_id, u.full_name, x.note,
-                           x.completed_at, x.assigned_by
-                    FROM class_duties x
-                    JOIN registered_users u ON u.telegram_id = x.student_id
-                    WHERE x.duty_date BETWEEN ? AND ?
-                    ORDER BY x.duty_date, u.full_name COLLATE NOCASE
-                """, (start, end)).fetchall()
-                return [dict(row) for row in rows]
+                students = {int(item["telegram_id"]): item for item in _class_students(db, d)}
+                rows = db.execute("""SELECT duty_date, student_id, note, completed_at, assigned_by
+                    FROM class_duties WHERE duty_date BETWEEN ? AND ?
+                    ORDER BY duty_date, student_id""", (start, end)).fetchall()
+                duties = []
+                for row in rows:
+                    item = dict(row)
+                    student = students.get(int(item["student_id"]))
+                    if not student:
+                        continue
+                    item["full_name"] = student["full_name"]
+                    item["registered"] = bool(student["registered"])
+                    duties.append(item)
+                return duties
             finally:
                 db.close()
         duties = await asyncio.to_thread(read)
     uid = int((request.get("user") or {}).get("id", 0))
     return web.json_response({"duties": duties, "can_manage": _journal_can_edit(d, uid), "today": today.isoformat()})
-
 
 async def api_duties_save(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
@@ -1581,7 +1675,7 @@ async def api_duties_save(request: web.Request) -> web.Response:
     if abs((duty_day - datetime.now(d.tz).date()).days) > 180:
         raise web.HTTPBadRequest(text="Можно назначать дежурства только в пределах 180 дней")
     ids, note = body["student_ids"], body["note"]
-    if not isinstance(ids, list) or not 1 <= len(ids) <= 8 or any(type(x) is not int or x <= 0 for x in ids) or len(ids) != len(set(ids)):
+    if not isinstance(ids, list) or not 1 <= len(ids) <= 8 or any(type(x) is not int or x == 0 for x in ids) or len(ids) != len(set(ids)):
         raise web.HTTPBadRequest(text="Выберите от 1 до 8 разных студентов")
     if not isinstance(note, str) or len(note.strip()) > 160:
         raise web.HTTPBadRequest(text="Примечание — не более 160 символов")
@@ -1591,9 +1685,8 @@ async def api_duties_save(request: web.Request) -> web.Response:
             db = _db_connect(d)
             try:
                 placeholders = ",".join("?" for _ in ids)
-                known = {int(row["telegram_id"]) for row in db.execute(
-                    f"SELECT telegram_id FROM registered_users WHERE telegram_id IN ({placeholders})", tuple(ids)
-                ).fetchall() if int(row["telegram_id"]) not in d.admin_ids}
+                known = {int(item["telegram_id"]) for item in _class_students(db, d)
+                         if int(item["telegram_id"]) in set(ids)}
                 if known != set(ids):
                     raise ValueError("В списке есть неизвестные студенты")
                 db.execute("DELETE FROM class_duties WHERE duty_date=?", (duty_day.isoformat(),))
