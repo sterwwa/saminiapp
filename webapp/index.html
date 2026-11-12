@@ -1112,7 +1112,7 @@ async function renderNext(){
   const viewerId=Number(state.me?.user?.id||state.me?.telegram_id||0);
   const myDuty=dutyData.duties.find(item=>item.duty_date===today&&Number(item.student_id)===viewerId);
   if(myDuty){
-   const lessons=(dayData.day?.lessons||[]).filter(item=>item.room);
+   const lessons=[...(dayData.day?.lessons||[])];
    lessons.sort((a,b)=>min(a.start||'00:00')-min(b.start||'00:00'));
    const room=lessons.length?lessons[lessons.length-1].room:'';
    const banner=el('section','duty-card home-duty-banner');
