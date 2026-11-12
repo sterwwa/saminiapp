@@ -1644,6 +1644,11 @@ async def api_duties_get(request: web.Request) -> web.Response:
         def read():
             db = _db_connect(d)
             try:
+                db.execute("""CREATE TABLE IF NOT EXISTS duty_no_school_days (
+                    duty_date TEXT PRIMARY KEY,
+                    marked_by INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                )""")
                 roster = sorted(_class_students(db, d), key=lambda x: x["full_name"].casefold())
                 if roster:
                     rebuilt = db.execute("SELECT 1 FROM duty_schedule_meta WHERE meta_key='alphabetical_pair_reset_v1'").fetchone()
@@ -1654,7 +1659,9 @@ async def api_duties_get(request: web.Request) -> web.Response:
                         pair_index = 0
                         stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
                         while day <= today + timedelta(days=180):
-                            if day.weekday() < 5 and len(roster) >= 2:
+                            if day.weekday() < 5 and len(roster) >= 2 and not db.execute(
+                                "SELECT 1 FROM duty_no_school_days WHERE duty_date=?", (day.isoformat(),)
+                            ).fetchone():
                                 first = pair_index % len(roster)
                                 second = (pair_index + 1) % len(roster)
                                 for pos in (first, second):
@@ -1671,7 +1678,9 @@ async def api_duties_get(request: web.Request) -> web.Response:
                         # Поддерживаем два назначения на каждом новом буднем дне.
                         day = today
                         while day <= today + timedelta(days=180):
-                            if day.weekday() < 5:
+                            if day.weekday() < 5 and not db.execute(
+                                "SELECT 1 FROM duty_no_school_days WHERE duty_date=?", (day.isoformat(),)
+                            ).fetchone():
                                 current_ids = {int(r["student_id"]) for r in db.execute(
                                     "SELECT student_id FROM class_duties WHERE duty_date=?", (day.isoformat(),)).fetchall()}
                                 if len(current_ids) > 2:
@@ -1719,6 +1728,70 @@ async def api_duties_get(request: web.Request) -> web.Response:
                               "can_view_preview": bool(set(roles) & {"starosta", "deputy"}),
                               "today": today.isoformat()})
 
+async def api_duties_skip_day(request: web.Request) -> web.Response:
+    d: Deps = request.app["deps"]
+    uid = int((request.get("user") or {}).get("id", 0))
+    if not _journal_can_edit(d, uid):
+        return web.json_response({"error": "forbidden", "message": "Пропускать учебный день могут староста, заместитель и администрация."}, status=403)
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        raise web.HTTPBadRequest(text="Некорректный JSON")
+    if not isinstance(body, dict) or set(body) != {"date"}:
+        raise web.HTTPBadRequest(text="Укажите дату")
+    try:
+        duty_day = date.fromisoformat(body["date"])
+    except (TypeError, ValueError):
+        raise web.HTTPBadRequest(text="Некорректная дата")
+    if duty_day != datetime.now(d.tz).date() or duty_day.weekday() > 4:
+        raise web.HTTPBadRequest(text="Можно пропустить только текущий учебный день")
+    try:
+        lessons = _day_json(d, duty_day, await d.get_lessons(duty_day), False)["lessons"]
+    except Exception as exc:
+        log.warning("Не удалось проверить расписание для пропуска дежурства %s: %s", duty_day, exc)
+        return web.json_response({"error": "schedule_unavailable", "message": "Не удалось проверить расписание. Попробуйте позже."}, status=503)
+    if not (1 <= len(lessons) <= 3) or any(str(item.get("number")) == "4" for item in lessons):
+        raise web.HTTPBadRequest(text="Пропустить можно только день с 1–3 парами без четвёртой пары")
+    stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    async with d.users_lock:
+        def shift_schedule():
+            db = _db_connect(d)
+            try:
+                db.execute("""CREATE TABLE IF NOT EXISTS duty_no_school_days (
+                    duty_date TEXT PRIMARY KEY,
+                    marked_by INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                )""")
+                if db.execute("SELECT 1 FROM duty_no_school_days WHERE duty_date=?", (duty_day.isoformat(),)).fetchone():
+                    return False
+                rows = db.execute("""SELECT duty_date, student_id, assigned_by, note, completed_at, created_at
+                    FROM class_duties WHERE duty_date>=? ORDER BY duty_date, student_id""",
+                    (duty_day.isoformat(),)).fetchall()
+                if not rows:
+                    return False
+                shifted = []
+                for row in rows:
+                    target = date.fromisoformat(row["duty_date"]) + timedelta(days=1)
+                    while target.weekday() > 4:
+                        target += timedelta(days=1)
+                    shifted.append((target.isoformat(), int(row["student_id"]), int(row["assigned_by"]),
+                                    row["note"], row["completed_at"], row["created_at"]))
+                db.execute("DELETE FROM class_duties WHERE duty_date>=?", (duty_day.isoformat(),))
+                db.executemany("""INSERT INTO class_duties
+                    (duty_date, student_id, assigned_by, note, completed_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?)""", shifted)
+                db.execute("INSERT INTO duty_no_school_days(duty_date, marked_by, created_at) VALUES (?, ?, ?)",
+                           (duty_day.isoformat(), uid, stamp))
+                db.commit()
+                return True
+            finally:
+                db.close()
+        shifted = await asyncio.to_thread(shift_schedule)
+    if not shifted:
+        raise web.HTTPConflict(text="Этот день уже пропущен или график на него не найден")
+    return web.json_response({"saved": True, "date": duty_day.isoformat(), "shifted": True})
+
+
 async def api_duties_rebuild(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     uid = int((request.get("user") or {}).get("id", 0))
@@ -1735,8 +1808,16 @@ async def api_duties_rebuild(request: web.Request) -> web.Response:
                     raise ValueError("Для составления графика нужны минимум два студента")
                 db.execute("DELETE FROM class_duties WHERE duty_date>=?", (today.isoformat(),))
                 day, pair_index, count = today, 0, 0
+                db.execute("""CREATE TABLE IF NOT EXISTS duty_no_school_days (
+                    duty_date TEXT PRIMARY KEY,
+                    marked_by INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
+                )""")
+                no_duty_days = {row["duty_date"] for row in db.execute(
+                    "SELECT duty_date FROM duty_no_school_days WHERE duty_date>=?", (today.isoformat(),)
+                ).fetchall()}
                 while day <= today + timedelta(days=180):
-                    if day.weekday() < 5:
+                    if day.weekday() < 5 and day.isoformat() not in no_duty_days:
                         first = pair_index % len(roster)
                         second = (pair_index + 1) % len(roster)
                         for pos in (first, second):
@@ -1937,6 +2018,7 @@ def create_app(deps: Deps) -> web.Application:
     app.router.add_post("/api/presence", api_presence)
     app.router.add_get("/api/duties", api_duties_get)
     app.router.add_post("/api/duties/rebuild", api_duties_rebuild)
+    app.router.add_post("/api/duties/skip-day", api_duties_skip_day)
     app.router.add_put("/api/duties", api_duties_save)
     app.router.add_post("/api/duties/skip", api_duties_skip)
     app.router.add_post("/api/duties/complete", api_duties_complete)
