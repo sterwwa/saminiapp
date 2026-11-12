@@ -567,6 +567,10 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         created_at TEXT NOT NULL,
         PRIMARY KEY (duty_date, student_id)
     )""")
+    db.execute("""CREATE TABLE IF NOT EXISTS duty_schedule_meta (
+        meta_key TEXT PRIMARY KEY,
+        meta_value TEXT NOT NULL DEFAULT ''
+    )""")
     _sync_class_roster(db)
     # Restore session headers for absence records saved before the history view.
     db.execute("""INSERT OR IGNORE INTO journal_sessions
@@ -1642,28 +1646,56 @@ async def api_duties_get(request: web.Request) -> web.Response:
             try:
                 roster = sorted(_class_students(db, d), key=lambda x: x["full_name"].casefold())
                 if roster:
-                    # Автозаполнение: ровно два разных студента на каждый будний день.
-                    day = today
-                    for _ in range(15):
-                        if day.weekday() < 5:
-                            current_ids = {int(r["student_id"]) for r in db.execute(
-                                "SELECT student_id FROM class_duties WHERE duty_date=?", (day.isoformat(),)).fetchall()}
-                            previous = db.execute("SELECT student_id FROM class_duties WHERE duty_date<? ORDER BY duty_date DESC, created_at DESC LIMIT 1", (day.isoformat(),)).fetchone()
-                            previous_id = int(previous["student_id"]) if previous else None
-                            previous_index = next((i for i, s in enumerate(roster) if int(s["telegram_id"]) == previous_id), -1)
-                            for offset in range(len(roster)):
-                                if len(current_ids) >= 2:
-                                    break
-                                chosen = int(roster[(previous_index + 1 + offset) % len(roster)]["telegram_id"])
-                                if chosen in current_ids:
-                                    continue
-                                db.execute("""INSERT OR IGNORE INTO class_duties
-                                    (duty_date, student_id, assigned_by, note, completed_at, created_at)
-                                    VALUES (?, ?, 0, 'Автоматическое назначение', '', ?)""",
-                                    (day.isoformat(), chosen, datetime.now(timezone.utc).isoformat(timespec="seconds")))
-                                current_ids.add(chosen)
-                        day += timedelta(days=1)
-                    db.commit()
+                    rebuilt = db.execute("SELECT 1 FROM duty_schedule_meta WHERE meta_key='alphabetical_pair_reset_v1'").fetchone()
+                    if not rebuilt:
+                        # Однократный сброс будущего графика и пересборка строго парами по алфавиту.
+                        db.execute("DELETE FROM class_duties WHERE duty_date>=?", (today.isoformat(),))
+                        day = today
+                        pair_index = 0
+                        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+                        while day <= today + timedelta(days=180):
+                            if day.weekday() < 5 and len(roster) >= 2:
+                                first = pair_index % len(roster)
+                                second = (pair_index + 1) % len(roster)
+                                for pos in (first, second):
+                                    db.execute("""INSERT INTO class_duties
+                                        (duty_date, student_id, assigned_by, note, completed_at, created_at)
+                                        VALUES (?, ?, 0, 'Автоматическое назначение по алфавиту', '', ?)""",
+                                        (day.isoformat(), int(roster[pos]["telegram_id"]), stamp))
+                                pair_index = (pair_index + 2) % len(roster)
+                            day += timedelta(days=1)
+                        db.execute("INSERT INTO duty_schedule_meta(meta_key, meta_value) VALUES ('alphabetical_pair_reset_v1', ?)",
+                                   (stamp,))
+                        db.commit()
+                    else:
+                        # Поддерживаем два назначения на каждом новом буднем дне.
+                        day = today
+                        for _ in range(15):
+                            if day.weekday() < 5:
+                                current_ids = {int(r["student_id"]) for r in db.execute(
+                                    "SELECT student_id FROM class_duties WHERE duty_date=?", (day.isoformat(),)).fetchall()}
+                                if len(current_ids) > 2:
+                                    db.execute("DELETE FROM class_duties WHERE duty_date=? AND student_id NOT IN (SELECT student_id FROM class_duties WHERE duty_date=? ORDER BY created_at, student_id LIMIT 2)",
+                                               (day.isoformat(), day.isoformat()))
+                                    current_ids = {int(r["student_id"]) for r in db.execute(
+                                        "SELECT student_id FROM class_duties WHERE duty_date=?", (day.isoformat(),)).fetchall()}
+                                if len(current_ids) < 2:
+                                    previous = db.execute("SELECT student_id FROM class_duties WHERE duty_date<? ORDER BY duty_date DESC, created_at DESC LIMIT 1", (day.isoformat(),)).fetchone()
+                                    previous_id = int(previous["student_id"]) if previous else None
+                                    previous_index = next((i for i, s in enumerate(roster) if int(s["telegram_id"]) == previous_id), -1)
+                                    for offset in range(len(roster)):
+                                        if len(current_ids) >= 2:
+                                            break
+                                        chosen = int(roster[(previous_index + 1 + offset) % len(roster)]["telegram_id"])
+                                        if chosen in current_ids:
+                                            continue
+                                        db.execute("""INSERT OR IGNORE INTO class_duties
+                                            (duty_date, student_id, assigned_by, note, completed_at, created_at)
+                                            VALUES (?, ?, 0, 'Автоматическое назначение', '', ?)""",
+                                            (day.isoformat(), chosen, datetime.now(timezone.utc).isoformat(timespec="seconds")))
+                                        current_ids.add(chosen)
+                            day += timedelta(days=1)
+                        db.commit()
                 students = {int(item["telegram_id"]): item for item in roster}
                 rows = db.execute("""SELECT duty_date, student_id, note, completed_at, assigned_by
                     FROM class_duties WHERE duty_date BETWEEN ? AND ?
