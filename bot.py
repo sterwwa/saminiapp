@@ -112,7 +112,7 @@ def _notification_lessons(lessons: list[dict]) -> list[dict]:
             "room": re.sub(r"\s+", " ", str(lesson.get("room") or "")).strip(),
             "teacher": re.sub(r"\s+", " ", str(lesson.get("teacher") or "")).strip(),
         }
-        if not any(item[key] for key in ("subject", "room", "teacher")):
+        if not item["subject"] and not item["room"]:
             continue
         result.append(item)
     return sorted(
@@ -812,6 +812,20 @@ async def check_changes() -> None:
             else:
                 old_clean = _notification_lessons(old_raw)
                 if _schedule_signature(old_clean) != _schedule_signature(new_clean):
+                    # Подтверждаем отличие вторым независимым чтением сайта.
+                    # Если сайт вернул промежуточную/неполную версию, уведомление откладывается.
+                    try:
+                        verified_clean = _notification_lessons(await get_lessons(day, fresh=True))
+                    except ScheduleError as e:
+                        log.warning("Не удалось подтвердить изменение расписания на %s: %s", day, e)
+                        await asyncio.sleep(1)
+                        continue
+                    if _schedule_signature(verified_clean) != _schedule_signature(new_clean):
+                        log.warning("Нестабильный ответ расписания на %s; уведомление отложено", day)
+                        await asyncio.sleep(1)
+                        continue
+                    new_clean = verified_clean
+
                     # Ошибка отправки в группу не должна блокировать личные уведомления.
                     try:
                         await bot.send_message(
