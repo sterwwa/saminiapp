@@ -1244,21 +1244,26 @@ async function renderJournal(){
     const allDayCard=el('section','card'),allDayHead=el('div','section-head');
     allDayHead.append(el('h3','','Пропуски за весь день'));
     allDayCard.append(allDayHead,el('p','notice','Нажмите рядом со студентом, чтобы отметить его отсутствующим сразу на всех парах выбранной даты.'));
-    const allDayRoster=el('div','journal-roster');
+    const allDayRoster=el('div','journal-roster'),allDayButtons=new Map();
+    const isAbsentAllDay=student=>sessions.length>0&&sessions.every(session=>absent.has(session.lesson_date+'|'+session.lesson_number+'|'+student.telegram_id));
+    const refreshAllDayButtons=()=>data.students.forEach(student=>{
+     const button=allDayButtons.get(student.telegram_id);
+     if(button){const value=isAbsentAllDay(student);button.textContent=value?'Не был весь день':'Был весь день';button.classList.toggle('absent',value)}
+    });
     data.students.forEach(student=>{
      const row=el('div','journal-student'),label=el('span','',student.full_name);
      const button=el('button','journal-mark','');
      const isAbsentAll=sessions.every(session=>absent.has(session.lesson_date+'|'+session.lesson_number+'|'+student.telegram_id));
      button.type='button';button.classList.toggle('absent',isAbsentAll);
      button.textContent=isAbsentAll?'Не был весь день':'Был весь день';
+     allDayButtons.set(student.telegram_id,button);
      button.onclick=()=>{
       const setAbsent=!sessions.every(session=>absent.has(session.lesson_date+'|'+session.lesson_number+'|'+student.telegram_id));
       sessions.forEach(session=>{
        const key=session.lesson_date+'|'+session.lesson_number+'|'+student.telegram_id;
        if(setAbsent)absent.add(key);else absent.delete(key);
       });
-      button.textContent=setAbsent?'Не был весь день':'Был весь день';
-      button.classList.toggle('absent',setAbsent);
+      refreshAllDayButtons();
       sessionRefreshers.forEach(refresh=>refresh());
       dirty=true;
       if(saveAll){saveAll.disabled=false;saveAll.classList.remove('is-idle');saveAll.textContent='Сохранить посещаемость всех пар'}
@@ -1290,6 +1295,7 @@ async function renderJournal(){
       const next=!absent.has(key);
       if(next)absent.add(key);else absent.delete(key);
       mark.textContent=next?'Не был':'Был';mark.classList.toggle('absent',next);updateSummary();
+      refreshAllDayButtons();
       dirty=true;saveAll.disabled=false;saveAll.classList.remove('is-idle');saveAll.textContent='Сохранить посещаемость всех пар';
      };
      row.append(mark);roster.append(row);
