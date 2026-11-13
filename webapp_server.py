@@ -1505,7 +1505,7 @@ async def api_journal_bulk_save(request: web.Request) -> web.Response:
             raise web.HTTPBadRequest(text="Некорректный или повторяющийся номер пары")
         if not isinstance(absent_ids, list) or len(absent_ids) > 200:
             raise web.HTTPBadRequest(text="Некорректный список отсутствующих")
-        if any(type(value) is not int or value <= 0 for value in absent_ids) or len(absent_ids) != len(set(absent_ids)):
+        if any(type(value) is not int or value == 0 for value in absent_ids) or len(absent_ids) != len(set(absent_ids)):
             raise web.HTTPBadRequest(text="Некорректный список студентов")
         seen_numbers.add(lesson_number)
         all_absent_ids.update(absent_ids)
