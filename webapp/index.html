@@ -1103,7 +1103,9 @@ async function checkLessonReminder(){
  if(!next){if(document.getElementById('lessonReminderBanner'))closeLessonReminder();return}
  showLessonReminder(current.date,next,min(next.start)-current.min);
 }
+let homeRenderSeq=0;
 async function renderNext(){
+ const seq=++homeRenderSeq;
  const root=$('#nextContent');root.replaceChildren();
  try{
   const today=now().date;
@@ -1111,6 +1113,7 @@ async function renderNext(){
    api('/api/duties'),
    api('/api/day?date='+encodeURIComponent(today))
   ]);
+  if(seq!==homeRenderSeq||state.page!=='next')return;
   const viewerId=Number(state.me?.user?.id||state.me?.telegram_id||0);
   const todayDuties=dutyData.duties.filter(item=>item.duty_date===today);
   const myDuty=todayDuties.find(item=>Number(item.student_id)===viewerId);
@@ -1154,6 +1157,7 @@ async function renderNext(){
  await checkLessonReminder();
 }
 function renderKnowledge(){
+ homeRenderSeq++;
  const root=$('#nextContent');root.replaceChildren();
  root.append(el('div','page-title','База знаний'),el('p','page-sub','Чаты нашей группы'));
  const chats=[
