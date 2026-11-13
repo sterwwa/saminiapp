@@ -1327,12 +1327,11 @@ async def api_journal_send_today_report(request: web.Request) -> web.Response:
         def read_report():
             db = _db_connect(d)
             try:
-                students = db.execute("""
-                    SELECT telegram_id, full_name
-                    FROM registered_users
-                    WHERE full_name IS NOT NULL AND TRIM(full_name) <> ''
-                    ORDER BY full_name COLLATE NOCASE
-                """).fetchall()
+                students = [
+                    {"telegram_id": item["telegram_id"], "full_name": item["full_name"]}
+                    for item in _class_students(db, d)
+                    if str(item.get("full_name") or "").strip()
+                ]
                 absent = db.execute("""
                     SELECT DISTINCT student_id
                     FROM journal_absences
