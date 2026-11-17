@@ -1136,21 +1136,21 @@ async function renderNext(){
  ['Студенты','Список группы, статусы','♙','#713bd1','students'],
  ['Расписание','Пары, семестр, каникулы','▦','#16875c','schedule'],
  ['Журнал','Посещаемость по дням','▤','#176c50','journal'],
- ['Объявления','Важное для группы','⚑','#7040c7','announcements'],
+ ['Дежурства','График уборки и дежурные','♧','#7040c7','duties'],
  ['База знаний','Чаты нашей группы','▣','#b96822','knowledge']
  ];
  const homeIconPaths={
   students:'<circle cx="9" cy="8" r="3"/><path d="M3.5 19v-1.2A4.8 4.8 0 0 1 8.3 13h1.4a4.8 4.8 0 0 1 4.8 4.8V19zM16 5.5a3 3 0 0 1 0 5.8M17 13.5a4.5 4.5 0 0 1 3.5 4.4V19"/>',
   schedule:'<rect x="3.5" y="5" width="17" height="16" rx="2.5"/><path d="M7.5 3v4M16.5 3v4M3.5 9.5h17M8 13h3M8 17h3M14 13h2M14 17h2"/>',
   journal:'<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M8 3.5v3M16 3.5v3M8.5 11h7M8.5 15h7M8.5 18h4"/>',
-  announcements:'<path d="M4 14V9.5a1.5 1.5 0 0 1 1.5-1.5H9l9-4v16l-9-4H5.5A1.5 1.5 0 0 1 4 14zM9 16l1.5 4H14l-2-5M20 9a4 4 0 0 1 0 5"/>',
+  duties:'<path d="M4 20h16M7 16l9-9 2 2-9 9H7zM14 7l2-2 3 3-2 2"/>',
   knowledge:'<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21zM4 5.5v13A2.5 2.5 0 0 1 6.5 16H20M8 7h8M8 11h8"/>'
  };
  paths.forEach(([title,desc,icon,color,key],i)=>{
   const b=el('button','home-action'+(key==='knowledge'?' wide':'')),ic=el('span','home-action-icon');
   ic.innerHTML=`<svg viewBox="0 0 24 24" aria-hidden="true">${homeIconPaths[key]||homeIconPaths.knowledge}</svg>`;
   const copy=el('span','home-action-copy');copy.append(el('b','',title),el('small','',desc));b.append(ic,copy);
-  b.onclick=()=>{if(key==='students')showPage('students');else if(key==='journal')showPage('journal');else if(key==='schedule')showPage('schedule');else if(key==='settings')showPage('settings');else if(key==='knowledge')renderKnowledge();else toast(title+' — раздел пока не подключён')};
+  b.onclick=()=>{if(key==='students')showPage('students');else if(key==='journal')showPage('journal');else if(key==='schedule')showPage('schedule');else if(key==='duties')showPage('duties');else if(key==='settings')showPage('settings');else if(key==='knowledge')renderKnowledge();else toast(title+' — раздел пока не подключён')};
   grid.append(b);
  });
  root.append(grid);
