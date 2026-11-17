@@ -534,6 +534,8 @@ def _db_connect(d: Deps) -> sqlite3.Connection:
         db.execute("ALTER TABLE registered_users ADD COLUMN birth_date TEXT NOT NULL DEFAULT ''")
     if "avatar_data" not in columns:
         db.execute("ALTER TABLE registered_users ADD COLUMN avatar_data TEXT NOT NULL DEFAULT ''")
+    if "telegram_photo_url" not in columns:
+        db.execute("ALTER TABLE registered_users ADD COLUMN telegram_photo_url TEXT NOT NULL DEFAULT ''")
     if "role" not in columns:
         db.execute("ALTER TABLE registered_users ADD COLUMN role TEXT NOT NULL DEFAULT 'student'")
     if "roles_json" not in columns:
@@ -606,6 +608,24 @@ async def _get_registered_user(d: Deps, uid: int) -> dict | None:
             finally:
                 db.close()
         return await asyncio.to_thread(read)
+
+
+async def _save_telegram_photo_url(d: Deps, uid: int, photo_url: object) -> None:
+    if not isinstance(photo_url, str) or not photo_url.startswith("https://") or len(photo_url) > 2048:
+        return
+    async with d.users_lock:
+        def save():
+            db = _db_connect(d)
+            try:
+                db.execute(
+                    "UPDATE registered_users SET telegram_photo_url = ? "
+                    "WHERE telegram_id = ? AND telegram_photo_url != ?",
+                    (photo_url, uid, photo_url),
+                )
+                db.commit()
+            finally:
+                db.close()
+        await asyncio.to_thread(save)
 
 
 async def _access_snapshot(d: Deps, uid: int) -> dict:
@@ -1015,6 +1035,7 @@ async def api_me(request: web.Request) -> web.Response:
     d: Deps = request.app["deps"]
     user = request.get("user") or {}
     uid = int(user.get("id", 1))
+    await _save_telegram_photo_url(d, uid, user.get("photo_url"))
     registered = await _get_registered_user(d, uid)
     access = await _access_snapshot(d, uid)
     async with d.prefs_lock:
@@ -1055,19 +1076,24 @@ async def api_register(request: web.Request) -> web.Response:
     if len(full_name) > 120 or not FULL_NAME_RE.fullmatch(full_name):
         raise web.HTTPBadRequest(text="Введите ФИО: от двух до четырёх слов, только буквы и дефисы")
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    photo_url = user.get("photo_url", "")
+    if not isinstance(photo_url, str) or not photo_url.startswith("https://") or len(photo_url) > 2048:
+        photo_url = ""
     async with d.users_lock:
         def save():
             db = _db_connect(d)
             try:
                 db.execute("""INSERT INTO registered_users
-                    (telegram_id, full_name, first_name, last_name, username, language_code, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    (telegram_id, full_name, first_name, last_name, username, language_code, telegram_photo_url, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(telegram_id) DO UPDATE SET full_name=excluded.full_name,
                     first_name=excluded.first_name, last_name=excluded.last_name,
                     username=excluded.username, language_code=excluded.language_code,
+                    telegram_photo_url=CASE WHEN excluded.telegram_photo_url != '' THEN excluded.telegram_photo_url
+                                            ELSE registered_users.telegram_photo_url END,
                     updated_at=excluded.updated_at""",
                     (uid, full_name, str(user.get("first_name", ""))[:64], str(user.get("last_name", ""))[:64],
-                     str(user.get("username", ""))[:64], str(user.get("language_code", ""))[:12], now, now))
+                     str(user.get("username", ""))[:64], str(user.get("language_code", ""))[:12], photo_url, now, now))
                 db.commit()
                 return dict(db.execute("SELECT * FROM registered_users WHERE telegram_id = ?", (uid,)).fetchone())
             finally:
