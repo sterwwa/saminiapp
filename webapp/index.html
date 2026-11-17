@@ -1462,7 +1462,8 @@ async function renderStudents(){
    }
    const card=el('div','card');card.dataset.studentId=String(u.telegram_id);const head=el('div','student-head'),initial=(u.full_name.trim()[0]||'У').toLocaleUpperCase('ru'),avatar=el('button','student-avatar',initial),info=el('div','student-info');
    avatar.type='button';avatar.disabled=!u.registered;avatar.title=u.registered?'Открыть профиль '+u.full_name:'Студент ещё не зарегистрирован';avatar.setAttribute('aria-label',avatar.title);
-   if(typeof u.avatar_data==='string'&&u.avatar_data.startsWith('data:image/')){const photo=el('img');photo.src=u.avatar_data;photo.alt='';photo.onerror=()=>{photo.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(photo)}
+   const avatarSrc=typeof u.avatar_data==='string'&&u.avatar_data.startsWith('data:image/')?u.avatar_data:(typeof u.telegram_photo_url==='string'&&u.telegram_photo_url.startsWith('https://')?u.telegram_photo_url:'');
+   if(avatarSrc){const photo=el('img');photo.src=avatarSrc;photo.alt='';photo.loading='lazy';photo.referrerPolicy='no-referrer';photo.onerror=()=>{photo.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(photo)}
    if(u.registered)avatar.onclick=()=>openStudentProfile(u);
    info.append(el('b','student-name-row',u.full_name+(u.is_me?' · Вы':'')),el('small','',u.username?'@'+u.username:''));
    info.append(el('small','',u.registered?'✓ Зарегистрирован в приложении':'Не зарегистрирован'));head.append(avatar,info);card.append(head);
@@ -1489,7 +1490,8 @@ function openStudentProfile(student){
  const top=el('div','student-profile-top'),close=el('button','student-profile-close','×');close.type='button';close.setAttribute('aria-label','Закрыть профиль');close.onclick=()=>overlay.remove();top.append(close);sheet.append(top);
  const fullName=String(student.full_name||'Пользователь'),initial=(fullName.trim()[0]||'П').toLocaleUpperCase('ru');
  const hero=el('div','student-profile-hero'),avatar=el('div','student-profile-avatar',initial);
- if(typeof student.avatar_data==='string'&&student.avatar_data.startsWith('data:image/')){const img=el('img');img.src=student.avatar_data;img.alt='Фото профиля';img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img)}
+ const avatarSrc=typeof student.avatar_data==='string'&&student.avatar_data.startsWith('data:image/')?student.avatar_data:(typeof student.telegram_photo_url==='string'&&student.telegram_photo_url.startsWith('https://')?student.telegram_photo_url:'');
+ if(avatarSrc){const img=el('img');img.src=avatarSrc;img.alt='Фото профиля';img.loading='lazy';img.referrerPolicy='no-referrer';img.onerror=()=>{img.remove();avatar.textContent=initial};avatar.textContent='';avatar.append(img)}
  const username=String(student.username||'').replace(/^@/,'');
  const usernameButton=el('button','student-profile-username',username?'@'+username:'Имя пользователя Telegram не указано');
  usernameButton.type='button';usernameButton.disabled=!username;usernameButton.title=username?'Нажмите, чтобы скопировать username':'Username не указан';
